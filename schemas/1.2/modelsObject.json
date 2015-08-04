@@ -5,10 +5,21 @@
     "required": [ "id", "properties" ],
     "properties": {
         "id": { "type": "string" },
-        "description": { "type": "string" },
+        "description": {
+            "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+            ]
+        },
         "properties": {
             "type": "object",
             "additionalProperties": { "$ref": "#/definitions/propertyObject" }
+        },
+        "required": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
         },
         "subTypes": {
             "type": "array",

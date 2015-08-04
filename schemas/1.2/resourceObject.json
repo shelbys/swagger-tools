@@ -5,7 +5,12 @@
     "required": [ "path" ],
     "properties": {
         "path": { "type": "string", "format": "uri" },
-        "description": { "type": "string" }
+        "description": {
+            "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+            ]
+        }
     },
     "additionalProperties": false
 }

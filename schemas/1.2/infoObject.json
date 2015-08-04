@@ -6,7 +6,12 @@
     "required": [ "title", "description" ],
     "properties": {
         "title": { "type": "string" },
-        "description": { "type": "string" },
+        "description": {
+            "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+            ]
+        },
         "termsOfServiceUrl": { "type": "string", "format": "uri" },
         "contact": { "type": "string", "format": "email" },
         "license": { "type": "string" },

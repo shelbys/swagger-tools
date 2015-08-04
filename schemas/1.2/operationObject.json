@@ -3,13 +3,22 @@
     "$schema": "http://json-schema.org/draft-04/schema#",
     "type": "object",
     "allOf": [
-        { "$ref": "dataTypeBase.json#" },
         {
-            "required": [ "method", "nickname", "parameters" ],
+            "required": [ "method", "nickname" ],
             "properties": {
                 "method": { "enum": [ "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS" ] },
-                "summary": { "type": "string", "maxLength": 120 },
-                "notes": { "type": "string" },
+                "summary": {
+                    "oneOf": [
+                        { "type": "string", "maxLength": 120 },
+                        { "type": "array", "items": { "type": "string" } }
+                    ]
+                },
+                "notes": {
+                    "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } }
+                    ]
+                },
                 "nickname": {
                     "type": "string",
                     "pattern": "^[a-zA-Z0-9_]+$"

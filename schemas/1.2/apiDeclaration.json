@@ -11,6 +11,9 @@
             "format": "uri",
             "pattern": "^https?://"
         },
+        "basePaths": {
+            "type": "object"
+        },
         "resourcePath": {
             "type": "string",
             "format": "uri",
@@ -41,7 +44,12 @@
                     "format": "uri-template",
                     "pattern": "^/"
                 },
-                "description": { "type": "string" },
+                "description": {
+                    "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } }
+                    ]
+                },
                 "operations": {
                     "type": "array",
                     "items": { "$ref": "operationObject.json#" }

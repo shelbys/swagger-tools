@@ -49,8 +49,18 @@
                     "minItems": 1,
                     "uniqueItems": true
                 },
-                "minimum": { "type": "string" },
-                "maximum": { "type": "string" }
+                "minimum": {
+                    "oneOf": [
+                        { "type": "number" },
+                        { "type": "string" }
+                    ]
+                },
+                "maximum": {
+                    "oneOf": [
+                        { "type": "number" },
+                        { "type": "string" }
+                    ]
+                }
             },
             "additionalProperties": false,
             "dependencies": {
@@ -59,7 +69,7 @@
                         {
                             "properties": {
                                 "type": { "enum": [ "integer" ] },
-                                "format": { "enum": [ "int32", "int64" ] }
+                                "format": { "enum": [ "currency-micro-unit", "currency-positive", "int32", "int64", "integer-positive" ] }
                             }
                         },
                         {
@@ -72,7 +82,34 @@
                             "properties": {
                                 "type": { "enum": [ "string" ] },
                                 "format": {
-                                    "enum": [ "byte", "date", "date-time" ]
+                                    "enum": [
+                                        "byte",
+                                        "city-name",
+                                        "constant",
+                                        "country-code",
+                                        "date",
+                                        "date-time",
+                                        "domain",
+                                        "email",
+                                        "host-name",
+                                        "host-name-or-ip-address",
+                                        "ip-address",
+                                        "iso-date",
+                                        "iso-datetime",
+                                        "iso-country-code",
+                                        "iso-currency-code",
+                                        "iso-timestamp",
+                                        "json-path",
+                                        "organization-name",
+                                        "person-name",
+                                        "phone",
+                                        "postal-code",
+                                        "shopper-password",
+                                        "state-province-territory",
+                                        "street-address",
+                                        "tld",
+                                        "url"
+                                    ]
                                 }
                             }
                         }
@@ -120,6 +157,7 @@
                         {
                             "properties": {
                                 "type": {},
+                                "enum": { "type": "array", "items": { "type": "string" } },
                                 "format": {}
                             },
                             "additionalProperties": false

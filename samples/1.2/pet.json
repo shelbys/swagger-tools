@@ -23,6 +23,10 @@
           ],
           "responseMessages": [
             {
+              "code":200,
+              "message": "Retrieved successfully"
+            },
+            {
               "code":400,
               "message": "Invalid ID supplied"
             },

@@ -334,6 +334,7 @@ describe('CLI Global', function () {
             '',
             '    -h, --help     output usage information',
             '    -v, --verbose  display verbose output',
+            '    -a, --auto     automatically include API Declarations referenced in Resource Listing',
             '',
             ''
           ].join('\n'));
@@ -643,6 +644,7 @@ describe('CLI Global', function () {
             '',
             '    -h, --help     output usage information',
             '    -v, --verbose  display verbose output',
+            '    -a, --auto     automatically include API Declarations referenced in Resource Listing',
             '',
             ''
           ].join('\n'));

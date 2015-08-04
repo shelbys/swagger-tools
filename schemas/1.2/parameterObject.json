@@ -11,7 +11,12 @@
                     "enum": [ "path", "query", "body", "header", "form" ]
                 },
                 "name": { "type": "string" },
-                "description": { "type": "string" },
+                "description": {
+                    "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } }
+                    ]
+                },
                 "required": { "type": "boolean" },
                 "allowMultiple": { "type": "boolean" }
             }

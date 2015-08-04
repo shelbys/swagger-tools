@@ -87,7 +87,7 @@ var handleUnidentifiableVersion = function handleUnidentifiableVersion (path) {
   return exitWithError('Unable to identify the Swagger version for document: ' + path);
 };
 
-var getDocuments = function getDocuments (pathsAndOrUrls, callback) {
+var getDocuments = function getDocuments (pathsAndOrUrls, autoIncludeRefs, callback) {
   var resolvedDocuments = {};
 
   async.map(pathsAndOrUrls, getDocument, function (err, documents) {
@@ -115,7 +115,18 @@ var getDocuments = function getDocuments (pathsAndOrUrls, callback) {
       });
     }
 
-    callback(err, resolvedDocuments);
+    if (autoIncludeRefs && !resolvedDocuments.apiDeclarations && resolvedDocuments.resourceListing) {
+      var apiDeclarationPaths = [pathsAndOrUrls[0]];
+      for (var idx in resolvedDocuments.resourceListing.apis) {
+        var api = resolvedDocuments.resourceListing.apis[idx];
+        if (api.path) {
+          apiDeclarationPaths.push(pathsAndOrUrls[0] + api.path.replace(/\{format\}/, 'json'));
+        }
+      }
+      getDocuments(apiDeclarationPaths, true, callback);
+    } else {
+      callback(err, resolvedDocuments);
+    }
   });
 };
 
@@ -167,7 +178,7 @@ program
       }
     }.bind(this);
 
-    getDocuments([resourceListing].concat(apiDeclarations || []), function (err, documents) {
+    getDocuments([resourceListing].concat(apiDeclarations || []), false, function (err, documents) {
       if (err) {
         return exitWithError(err.message);
       }
@@ -233,11 +244,12 @@ program
 program
   .command('validate <resourceListingOrSwaggerDoc> [apiDeclarations...]')
   .option('-v, --verbose', 'display verbose output')
+  .option('-a, --auto', 'automatically include API Declarations referenced in Resource Listing')
   .description('Display validation results for the Swagger document(s)')
   .action(function (rlOrSO, apiDeclarations) {
     var verbose = this.verbose;
 
-    getDocuments([rlOrSO].concat(apiDeclarations || []), function (err, documents) {
+    getDocuments([rlOrSO].concat(apiDeclarations || []), this.auto, function (err, documents) {
       if (err) {
         return exitWithError(err.message);
       }

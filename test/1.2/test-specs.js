@@ -149,9 +149,25 @@ describe('Specification v1.2', function () {
 
           assert.deepEqual(result.apiDeclarations[0].errors, [
             {
-              code: 'INVALID_TYPE',
-              message: 'Expected type string but found type boolean',
-              path: ['models', 'Order', 'description']
+              code: 'ONE_OF_MISSING',
+              message: 'Data does not match any schemas from \'oneOf\'',
+              path: [
+                'models',
+                'Order',
+                'description'
+              ],
+              inner: [
+                {
+                  code: 'INVALID_TYPE',
+                  message: 'Expected type string but found type boolean',
+                  path: ['models', 'Order', 'description']
+                },
+                {
+                  code: 'INVALID_TYPE',
+                  message: 'Expected type array but found type boolean',
+                  path: ['models', 'Order', 'description']
+                }
+              ]
             }
           ]);
           assert.equal(result.apiDeclarations[0].warnings.length, 0);
@@ -586,7 +602,7 @@ describe('Specification v1.2', function () {
               code: 'DUPLICATE_RESPONSE_MESSAGE_CODE',
               message: 'Response message code already defined: ' +
                 cPetJson.apis[0].operations[0].responseMessages[0].code,
-              path: ['apis', '0', 'operations', '0', 'responseMessages', '2', 'code']
+              path: ['apis', '0', 'operations', '0', 'responseMessages', '3', 'code']
             }
           ]);
           assert.equal(result.apiDeclarations[0].warnings.length, 0);
