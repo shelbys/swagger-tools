@@ -40,6 +40,7 @@
                     "enum": [ "boolean", "integer", "number", "string" ]
                 },
                 "format": { "type": "string" },
+                "pattern": { "type": "string" },
                 "defaultValue": {
                     "not": { "type": [ "array", "object", "null" ] }
                 },
@@ -69,13 +70,15 @@
                         {
                             "properties": {
                                 "type": { "enum": [ "integer" ] },
-                                "format": { "enum": [ "currency-micro-unit", "currency-positive", "int32", "int64", "integer-positive" ] }
+                                "format": { "enum": [ "currency-micro-unit", "currency-positive", "int32", "int64", "integer-positive" ] },
+                                "pattern": { "type": "string" }
                             }
                         },
                         {
                             "properties": {
                                 "type": { "enum": [ "number" ] },
-                                "format": { "enum": [ "float", "double" ] }
+                                "format": { "enum": [ "float", "double" ] },
+                                "pattern": { "type": "string" }
                             }
                         },
                         {
@@ -107,10 +110,12 @@
                                         "shopper-password",
                                         "state-province-territory",
                                         "street-address",
+                                        "street-address2",
                                         "tld",
                                         "url"
                                     ]
-                                }
+                                },
+                                "pattern": { "type": "string" }
                             }
                         }
                     ]
@@ -158,7 +163,8 @@
                             "properties": {
                                 "type": {},
                                 "enum": { "type": "array", "items": { "type": "string" } },
-                                "format": {}
+                                "format": {},
+                                "pattern": {}
                             },
                             "additionalProperties": false
                         }

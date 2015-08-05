@@ -1091,14 +1091,7 @@ describe('Specification v1.2', function () {
             return done(err);
           }
 
-          assert.deepEqual(result.errors, [
-            {
-              code: 'UNUSED_RESOURCE_PATH',
-              message: 'Resource path is defined but is not used: /people',
-              path: ['apis', '3', 'path']
-            }
-          ]);
-          assert.equal(result.warnings.length, 0);
+          assert.equal(result, null);
 
           done();
         });

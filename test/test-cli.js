@@ -37,6 +37,7 @@ var petJsonPath = path.resolve(path.join(__dirname, '..', 'samples', '1.2', 'pet
 var petstoreJsonPath = path.resolve(path.join(__dirname, '..', 'samples', '2.0', 'petstore.json'));
 var pkgPath = path.resolve(path.join(__dirname, '..', 'package.json'));
 var rlJsonPath = path.resolve(path.join(__dirname, '..', 'samples', '1.2', 'resource-listing.json'));
+var rlJsonPathBad = path.resolve(path.join(__dirname, '..', 'samples', '1.2', 'resource-listing-bad.json'));
 var storeJsonPath = path.resolve(path.join(__dirname, '..', 'samples', '1.2', 'store.json'));
 var userJsonPath = path.resolve(path.join(__dirname, '..', 'samples', '1.2', 'user.json'));
 
@@ -180,25 +181,17 @@ describe('CLI Global', function () {
       });
 
       it('invalid Swagger document(s)', function (done) {
-        executeCLI(['convert', rlJsonPath], function (stderr, stdout) {
+        executeCLI(['convert', rlJsonPathBad], function (stderr, stdout) {
           assert.equal(stderr, [
             '',
             'The Swagger document(s) are invalid (Run with --no-validation to skip validation)',
             '',
             'API Errors:',
             '',
-            '  #/apis/0/path: Resource path is defined but is not used: /pet',
-            '  #/apis/1/path: Resource path is defined but is not used: /user',
-            '  #/apis/2/path: Resource path is defined but is not used: /store',
+            '  #/apis/0: Missing required property: path',
+            '  #/apis/0: Additional properties not allowed: paths',
             '',
-            'API Warnings:',
-            '',
-            '  #/authorizations/oauth2: Authorization is defined but is not used: oauth2',
-            '  #/authorizations/oauth2/scopes/0: Authorization scope is defined but is not used: write:pets',
-            '  #/authorizations/oauth2/scopes/1: Authorization scope is defined but is not used: read:pets',
-            '  #/authorizations/oauth2/scopes/2: Authorization scope is defined but is not used: test:anything',
-            '',
-            '3 errors and 4 warnings',
+            '2 errors and 0 warnings',
             '',
             ''
           ].join('\n'));
@@ -209,7 +202,7 @@ describe('CLI Global', function () {
       });
 
       it('invalid Swagger document(s) but with validation disabled', function (done) {
-        executeCLI(['convert', rlJsonPath, '--no-validation'], function (stderr, stdout) {
+        executeCLI(['convert', rlJsonPathBad, '--no-validation'], function (stderr, stdout) {
           assert.equal(stderr, '');
           assert.ok(_.isPlainObject(JSON.parse(stdout)));
 
@@ -503,23 +496,15 @@ describe('CLI Global', function () {
 
       describe('Swagger 1.2', function () {
         it('invalid', function (done) {
-          executeCLI(['validate', rlJsonPath], function (stderr, stdout) {
+          executeCLI(['validate', rlJsonPathBad], function (stderr, stdout) {
             assert.equal(stderr, [
               '',
               'API Errors:',
               '',
-              '  #/apis/0/path: Resource path is defined but is not used: /pet',
-              '  #/apis/1/path: Resource path is defined but is not used: /user',
-              '  #/apis/2/path: Resource path is defined but is not used: /store',
+              '  #/apis/0: Missing required property: path',
+              '  #/apis/0: Additional properties not allowed: paths',
               '',
-              'API Warnings:',
-              '',
-              '  #/authorizations/oauth2: Authorization is defined but is not used: oauth2',
-              '  #/authorizations/oauth2/scopes/0: Authorization scope is defined but is not used: write:pets',
-              '  #/authorizations/oauth2/scopes/1: Authorization scope is defined but is not used: read:pets',
-              '  #/authorizations/oauth2/scopes/2: Authorization scope is defined but is not used: test:anything',
-              '',
-              '3 errors and 4 warnings',
+              '2 errors and 0 warnings',
               '',
               ''
             ].join('\n'));
@@ -530,7 +515,7 @@ describe('CLI Global', function () {
         });
 
         it('invalid (verbose)', function (done) {
-          executeCLI(['validate', rlJsonPath, petJsonPath, '--verbose'], function (stderr, stdout) {
+          executeCLI(['validate', rlJsonPathBad, petJsonPath, '--verbose'], function (stderr, stdout) {
             assert.equal(stderr, [
               '',
               'Validation Details:',
@@ -538,21 +523,17 @@ describe('CLI Global', function () {
               '  Swagger Version: 1.2',
               '  Swagger files:',
               '',
-              '    Resource Listing: ' + rlJsonPath,
+              '    Resource Listing: ' + rlJsonPathBad,
               '    API Declarations:',
               '',
               '      ' + petJsonPath,
               '',
               'API Errors:',
               '',
-              '  #/apis/1/path: Resource path is defined but is not used: /user',
-              '  #/apis/2/path: Resource path is defined but is not used: /store',
+              '  #/apis/0: Missing required property: path',
+              '  #/apis/0: Additional properties not allowed: paths',
               '',
-              'API Warnings:',
-              '',
-              '  #/authorizations/oauth2/scopes/2: Authorization scope is defined but is not used: test:anything',
-              '',
-              '2 errors and 1 warning',
+              '2 errors and 0 warnings',
               '',
               ''
             ].join('\n'));
