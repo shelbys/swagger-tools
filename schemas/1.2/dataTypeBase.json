@@ -42,7 +42,16 @@
                 {
                     "properties": {
                         "type": { "enum": [ "integer" ] },
-                        "format": { "enum": [ "currency-micro-unit", "currency-positive", "int32", "int64", "integer-positive" ] },
+                        "format": {
+                            "enum": [
+                                "currency-micro-unit",
+                                "currency-micro-unit-positive",
+                                "currency-positive",
+                                "int32",
+                                "int64",
+                                "integer-positive"
+                            ]
+                        },
                         "pattern": { "type": "string" }
                     }
                 },
@@ -58,6 +67,7 @@
                         "type": { "enum": [ "string" ] },
                         "format": {
                             "enum": [
+                                "bcp-47",
                                 "byte",
                                 "city-name",
                                 "constant",
@@ -66,10 +76,12 @@
                                 "date-time",
                                 "domain",
                                 "email",
+                                "guid",
                                 "host-name",
                                 "host-name-or-ip-address",
                                 "ip-address",
                                 "iso-date",
+                                "iso-date-future",
                                 "iso-datetime",
                                 "iso-country-code",
                                 "iso-currency-code",
