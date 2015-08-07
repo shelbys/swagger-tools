@@ -80,6 +80,8 @@
                                 "host-name",
                                 "host-name-or-ip-address",
                                 "ip-address",
+                                "ipv4",
+                                "ipv6",
                                 "iso-date",
                                 "iso-date-future",
                                 "iso-datetime",
@@ -96,6 +98,7 @@
                                 "street-address",
                                 "street-address2",
                                 "tld",
+                                "uri",
                                 "url"
                             ]
                         },
