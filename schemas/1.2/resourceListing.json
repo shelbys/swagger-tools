@@ -9,7 +9,10 @@
             "type": "array",
             "items": { "$ref": "resourceObject.json#" }
         },
-        "apiVersion": { "type": "string" },
+        "apiVersion": {
+            "type": "string",
+            "pattern": "^(?:(\\d+)\\.)?(?:(\\d+)\\.)?(\\*|\\d+)$"
+        },
         "info": { "$ref": "infoObject.json#" },
         "authorizations": { "$ref": "authorizationObject.json#" }
     }
