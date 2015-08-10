@@ -5,7 +5,10 @@
     "required": [ "swaggerVersion", "basePath", "apis" ],
     "properties": {
         "swaggerVersion": { "enum": [ "1.2" ] },
-        "apiVersion": { "type": "string" },
+        "apiVersion": {
+            "type": "string",
+            "pattern": "^(?:(\\d+)\\.)?(?:(\\d+)\\.)?(\\*|\\d+)$"
+        },
         "basePath": {
             "type": "string",
             "format": "uri",
