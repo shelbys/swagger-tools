@@ -113,6 +113,7 @@
                                         "iso-date",
                                         "iso-date-future",
                                         "iso-datetime",
+                                        "iso-datetime-future",
                                         "iso-country-code",
                                         "iso-currency-code",
                                         "iso-timestamp",
