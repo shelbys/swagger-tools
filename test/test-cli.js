@@ -26,7 +26,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var executeCLI = require('./helpers').executeCLI;
 var path = require('path');
@@ -46,18 +46,18 @@ var globalHelp = [
   '  Usage: swagger-tools [options] [command]',
   '',
   '',
+  '  Options:',
+  '',
+  '    -V, --version  output the version number',
+  '    -h, --help     output usage information',
+  '',
+  '',
   '  Commands:',
   '',
   '    convert [options] <resourceListing> [apiDeclarations...]               Converts Swagger 1.2 documents to a Swagger 2.0 document',
   '    help [command]                                                         Display help information',
   '    info <version>                                                         Display information about the Swagger version requested',
   '    validate [options] <resourceListingOrSwaggerDoc> [apiDeclarations...]  Display validation results for the Swagger document(s)',
-  '',
-  '  Options:',
-  '',
-  '    -h, --help     output usage information',
-  '    -V, --version  output the version number',
-  '',
   ''
 ].join('\n');
 
@@ -125,7 +125,7 @@ describe('CLI Global', function () {
           assert.equal(stdout, '');
 
           done();
-        }); 
+        });
       });
 
       it('invalid resourceListing argument (non-existent file)', function (done) {
@@ -237,18 +237,18 @@ describe('CLI Global', function () {
             '',
             '  Converts Swagger 1.2 documents to a Swagger 2.0 document',
             '',
+            '',
             '  Options:',
             '',
-            '    -h, --help           output usage information',
             '    -n, --no-validation  disable pre-conversion validation of the Swagger document(s)',
             '    -y, --yaml           output as YAML instead of JSON',
-            '',
+            '    -h, --help           output usage information',
             ''
           ].join('\n'));
 
           done();
         });
-      });      
+      });
     });
 
     describe('help', function () {
@@ -261,12 +261,12 @@ describe('CLI Global', function () {
             '',
             '  Converts Swagger 1.2 documents to a Swagger 2.0 document',
             '',
+            '',
             '  Options:',
             '',
-            '    -h, --help           output usage information',
             '    -n, --no-validation  disable pre-conversion validation of the Swagger document(s)',
             '    -y, --yaml           output as YAML instead of JSON',
-            '',
+            '    -h, --help           output usage information',
             ''
           ].join('\n'));
 
@@ -283,10 +283,10 @@ describe('CLI Global', function () {
             '',
             '  Display help information',
             '',
+            '',
             '  Options:',
             '',
             '    -h, --help  output usage information',
-            '',
             ''
           ].join('\n'));
 
@@ -303,10 +303,10 @@ describe('CLI Global', function () {
             '',
             '  Display information about the Swagger version requested',
             '',
+            '',
             '  Options:',
             '',
             '    -h, --help  output usage information',
-            '',
             ''
           ].join('\n'));
 
@@ -323,12 +323,11 @@ describe('CLI Global', function () {
             '',
             '  Display validation results for the Swagger document(s)',
             '',
+            '',
             '  Options:',
             '',
-            '    -h, --help     output usage information',
             '    -v, --verbose  display verbose output',
-            '    -a, --auto     automatically include API Declarations referenced in Resource Listing',
-            '',
+            '    -h, --help     output usage information',
             ''
           ].join('\n'));
 
@@ -345,10 +344,10 @@ describe('CLI Global', function () {
             '',
             '  Display help information',
             '',
+            '',
             '  Options:',
             '',
             '    -h, --help  output usage information',
-            '',
             ''
           ].join('\n'));
 
@@ -369,7 +368,7 @@ describe('CLI Global', function () {
           assert.equal(stdout, '');
 
           done();
-        }); 
+        });
       });
 
       it('invalid version argument', function (done) {
@@ -383,7 +382,7 @@ describe('CLI Global', function () {
           assert.equal(stdout, '');
 
           done();
-        }); 
+        });
       });
 
       it('Swagger 1.2', function (done) {
@@ -400,7 +399,7 @@ describe('CLI Global', function () {
           ].join('\n'));
 
           done();
-        }); 
+        });
       });
 
       it('Swagger 2.0', function (done) {
@@ -417,7 +416,7 @@ describe('CLI Global', function () {
           ].join('\n'));
 
           done();
-        }); 
+        });
       });
 
       it('--help', function (done) {
@@ -429,10 +428,10 @@ describe('CLI Global', function () {
             '',
             '  Display information about the Swagger version requested',
             '',
+            '',
             '  Options:',
             '',
             '    -h, --help  output usage information',
-            '',
             ''
           ].join('\n'));
 
@@ -453,7 +452,7 @@ describe('CLI Global', function () {
           assert.equal(stdout, '');
 
           done();
-        }); 
+        });
       });
 
       it('invalid resourceListing or swaggerObject argument (non-existent file)', function (done) {
@@ -511,7 +510,7 @@ describe('CLI Global', function () {
             assert.equal(stdout, '');
 
             done();
-          });        
+          });
         });
 
         it('invalid (verbose)', function (done) {
@@ -549,7 +548,7 @@ describe('CLI Global', function () {
             assert.equal(stdout, '');
 
             done();
-          });        
+          });
         });
 
         it('valid (verbose)', function (done) {
@@ -589,7 +588,7 @@ describe('CLI Global', function () {
             assert.equal(stdout, '');
 
             done();
-          });        
+          });
         });
 
         it('valid (verbose)', function (done) {
@@ -621,12 +620,11 @@ describe('CLI Global', function () {
             '',
             '  Display validation results for the Swagger document(s)',
             '',
+            '',
             '  Options:',
             '',
-            '    -h, --help     output usage information',
             '    -v, --verbose  display verbose output',
-            '    -a, --auto     automatically include API Declarations referenced in Resource Listing',
-            '',
+            '    -h, --help     output usage information',
             ''
           ].join('\n'));
 

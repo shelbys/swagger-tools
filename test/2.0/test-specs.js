@@ -26,7 +26,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var async = require('async');
 var JsonRefs = require('json-refs');
@@ -187,7 +187,8 @@ describe('Specification v2.0', function () {
             {
               code: 'OBJECT_MISSING_REQUIRED_PROPERTY',
               message: 'Missing required property: paths',
-              path: []
+              path: [],
+              title: 'A JSON Schema for Swagger 2.0 API.'
             }
           ]);
           assert.equal(result.warnings.length, 0);
@@ -1267,7 +1268,6 @@ describe('Specification v2.0', function () {
                 path: ['paths', '/pets/{id}', 'get', 'parameters', '1', 'name']
               }
             ]);
-            assert.equal(result.warnings.length, 0);
 
             done();
           });
@@ -1286,7 +1286,7 @@ describe('Specification v2.0', function () {
           cPath.parameters.push(cParam);
 
           swaggerObject.paths['/people/{id}'] = {
-            $ref: 'https://rawgit.com/apigee-127/swagger-tools/master/test/browser/people.json#/paths/~1people~1{id}'
+            $ref: 'https://cdn.rawgit.com/apigee-127/swagger-tools/master/test/browser/people.json#/paths/~1people~1{id}'
           };
 
           spec.validate(swaggerObject, function (err, result) {
@@ -2150,7 +2150,8 @@ describe('Specification v2.0', function () {
           {
             code: 'OBJECT_MISSING_REQUIRED_PROPERTY',
             message: 'Missing required property: name',
-            path: []
+            path: [],
+            title: 'Composed #/definitions/Pet'
           }
         ]);
 
@@ -2165,6 +2166,29 @@ describe('Specification v2.0', function () {
         id: 1,
         name: 'Jeremy'
       }, function (err, result) {
+        if (err) {
+          return done(err);
+        }
+
+        assert.ok(_.isUndefined(result));
+
+        done();
+      });
+    });
+
+    it('should validate array models', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.definitions.Array = {
+        type: 'array',
+        items: {
+          type: 'string'
+        }
+      };
+
+      spec.validateModel(swaggerObject, '#/definitions/Array', [
+        'Jeremy'
+      ], function (err, result) {
         if (err) {
           return done(err);
         }
@@ -2203,15 +2227,13 @@ describe('Specification v2.0', function () {
           return done(err);
         }
 
-        JsonRefs.resolveRefs(petStoreJson, function (err, json) {
-          if (err) {
-            return done(err);
-          }
+        JsonRefs.resolveRefs(petStoreJson)
+          .then(function (results) {
+            assert.deepEqual(results.resolved, resolved);
 
-          assert.deepEqual(json, resolved);
-
-          done();
-        });
+            done();
+          })
+          .catch(done);
       });
     });
 
@@ -2221,15 +2243,13 @@ describe('Specification v2.0', function () {
           return done(err);
         }
 
-        assert.deepEqual(JsonRefs.resolveRefs(petStoreJson, function (err, json) {
-          if (err) {
-            return done(err);
-          }
+        JsonRefs.resolveRefs(petStoreJson)
+          .then(function (results) {
+            assert.deepEqual(results.resolved.definitions.Pet, resolved);
 
-          assert.deepEqual(json.definitions.Pet, resolved);
-
-          done();
-        }));
+            done();
+          })
+          .catch(done);
       });
     });
   });
@@ -2649,6 +2669,255 @@ describe('Specification v2.0', function () {
         assert.ok(_.isUndefined(result));
 
         done();
+      });
+    });
+
+    it('should handle references within objects properly (Issue 176)', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.definitions.Person = {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string'
+          }
+        }
+      };
+
+      swaggerObject.definitions.Surname = {
+        $ref: '#/definitions/Person/properties/name'
+      };
+
+      spec.validate(swaggerObject, function (err, result) {
+        if (err) {
+          return done(err);
+        }
+
+        assert.equal(result.errors.length, 0);
+        assert.deepEqual(result.warnings, [
+          {
+            code: 'UNUSED_DEFINITION',
+            message: 'Definition is defined but is not used: #/definitions/Surname',
+            path: [
+              'definitions',
+              'Surname'
+            ]
+          }
+        ]);
+
+        done();
+      });
+    });
+
+    it('should reject decimal "integers" as defaults (Issue 279)', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.definitions.Pet.properties.fake = {
+        type: 'integer',
+        default: 1.1
+      };
+
+      spec.validate(swaggerObject, function (err, result) {
+        if (err) {
+          return done(err);
+        }
+
+        assert.deepEqual(result.errors, [
+          {
+            code: 'INVALID_TYPE',
+            message: 'Not a valid integer: 1.1',
+            path: ['definitions', 'Pet', 'properties', 'fake', 'default']
+          }
+        ]);
+        assert.equal(result.warnings.length, 0);
+
+        done();
+      });
+    });
+
+    it('should reject number+string "numbers" as defaults (Issue 279)', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.definitions.Pet.properties.fake = {
+        type: 'number',
+        default: '2something'
+      };
+
+      spec.validate(swaggerObject, function (err, result) {
+        if (err) {
+          return done(err);
+        }
+
+        assert.deepEqual(result.errors, [
+          {
+            code: 'INVALID_TYPE',
+            message: 'Not a valid number: 2something',
+            path: ['definitions', 'Pet', 'properties', 'fake', 'default']
+          }
+        ]);
+        assert.equal(result.warnings.length, 0);
+
+        done();
+      });
+    });
+
+    it('should reject number+string "integers" as defaults (Issue 279)', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.definitions.Pet.properties.fake = {
+        type: 'integer',
+        default: '2something'
+      };
+
+      spec.validate(swaggerObject, function (err, result) {
+        if (err) {
+          return done(err);
+        }
+
+        assert.deepEqual(result.errors, [
+          {
+            code: 'INVALID_TYPE',
+            message: 'Not a valid integer: 2something',
+            path: ['definitions', 'Pet', 'properties', 'fake', 'default']
+          }
+        ]);
+        assert.equal(result.warnings.length, 0);
+
+        done();
+      });
+    });
+
+    it('should properly traverse objects with a length property', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+      var definitionWithLengthPropertyInExample = {
+        properties: {
+          length: {type: 'integer'},
+          name: {type: 'string'}
+        },
+        example: {
+          name: 'joe',
+          length: 20000000
+        }
+      };
+
+      swaggerObject.definitions.Pet = definitionWithLengthPropertyInExample;
+
+      spec.validate(swaggerObject, function () {
+          done();
+      });
+    });
+
+    describe('human readable errors for invalid schema', function () {
+      function validateResults (results, defType, done) {
+        assert.equal(results.errors.length, 1);
+        assert.equal(results.warnings.length, 0);
+        assert.equal(results.errors[0].message, 'Not a valid ' + defType + ' definition');
+
+        done();
+      }
+
+      it('should handle parameter definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.paths['/pets'].post.parameters[0] = {};
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'parameter', done);
+        });
+      });
+
+      it('should handle global parameter definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.parameters = {
+          broken: {}
+        };
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'parameter', done);
+        });
+      });
+
+      it('should handle response definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.paths['/pets'].post.responses.default = {};
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'response', done);
+        });
+      });
+
+      it('should handle response schema definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.paths['/pets'].post.responses.default = {
+          description: 'A broken response',
+          schema: []
+        };
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'response', done);
+        });
+      });
+
+      it('should handle schema additionalProperties definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.definitions.Broken = {
+          type: 'object',
+          additionalProperties: []
+        };
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'schema additionalProperties', done);
+        });
+      });
+
+      it('should handle schema items definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.definitions.Broken = {
+          type: 'object',
+          properties: {
+            urls: {
+              type: 'array',
+              items: false
+            }
+          }
+        };
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'schema items', done);
+        });
+      });
+
+      it('should handle securityDefinitions definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.securityDefinitions.broken = {};
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'securityDefinitions', done);
+        });
+      });
+
+      it('should handle schema items definition', function (done) {
+        var swaggerObject = _.cloneDeep(petStoreJson);
+
+        swaggerObject.definitions.Broken = {
+          type: 'object',
+          properties: {
+            urls: {
+              type: 'array',
+              items: true
+            }
+          }
+        };
+
+        spec.validate(swaggerObject, function (err, result) {
+          validateResults(result, 'schema items', done);
+        });
       });
     });
   });

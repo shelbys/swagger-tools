@@ -28,17 +28,25 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var async = require('async');
 var helpers = require('../helpers');
 var request = require('supertest');
+var stream = require('stream');
 
 var petStoreJson = _.cloneDeep(require('../../samples/2.0/petstore.json'));
 
 var samplePet = {
   id: 1,
+  name: 'Test Pet'
+};
+
+var sampleInvalidPet = {
+  identifier: 1,
   name: 'Test Pet'
 };
 
@@ -200,7 +208,7 @@ describe('Swagger Validator Middleware v2.0', function () {
       });
     });
 
-    it('should return an error for invalid parameter values based on type/format', function () {
+    it('should return an error for invalid parameter values based on type/format', function (done) {
       var argName = 'arg0';
       var badValue = 'fake';
       var testScenarios = [
@@ -235,13 +243,80 @@ describe('Swagger Validator Middleware v2.0', function () {
             .query(content)
             .expect(400)
             .end(function (err, res) {
-              if (res) {
-                res.expectedMessage = 'Request validation failed: ' + expectedMessage;
+              if (err) {
+                return callback(err);
               }
-
-              callback(err, res);
+              helpers.expectContent('Request validation failed: ' + expectedMessage)(undefined, res);
+              callback();
             });
         });
+      }, function (err) {
+        if (err) {
+          return done(err);
+        }
+
+        done();
+      });
+    });
+
+    it('should return an error for invalid parameter values based on type/format', function (done) {
+      var argName = 'arg0';
+      var testScenarios = [
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '0'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '12345'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '"2016-02-04T20:16:26+00:00"'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-99-04T20:16:26+00:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-99T20:16:26+00:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-04T99:16:26+00:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-04T20:99:26+00:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-04T20:16:99+00:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-04T20:16:26+99:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-04T20:16:26-99:00'},
+        {json: {in: 'query', name: argName, type: 'string', format: 'date-time'}, value: '2016-02-04T20:16:26-00:23'},
+      ];
+
+      async.map(testScenarios, function (scenario, callback) {
+        var cPetStore = _.cloneDeep(petStoreJson);
+        var cScenario = _.cloneDeep(scenario.json);
+        var badValue = _.cloneDeep(scenario.value);
+        var content = {arg0: badValue};
+        var expectedMessage = 'Parameter (' + cScenario.name + ') is not a valid ' +
+                            (_.isUndefined(cScenario.format) ?
+                               '' :
+                               cScenario.format + ' ') + cScenario.type + ': ' + badValue;
+
+        cPetStore.paths['/pets/{id}'].get.parameters = [cScenario];
+
+        helpers.createServer([cPetStore],
+          {
+            swaggerRouterOptions: {
+              controllers: {
+                getPetById: function (req, res) {
+                  res.end('OK');
+                }
+              }
+            }
+          },
+          function (app) {
+            request(app)
+              .get('/api/pets/1')
+              .query(content)
+              .expect(400)
+              .end(function (err, res) {
+                if (err) {
+                  return callback(err + '\n\tInvalid value that should have been rejected: ' + badValue);
+                }
+                helpers.expectContent('Request validation failed: ' + expectedMessage)(undefined, res);
+                callback();
+              });
+            }
+          );
+      }, function (err) {
+        if (err) {
+          return done(err);
+        }
+
+        done();
       });
     });
 
@@ -253,6 +328,8 @@ describe('Swagger Validator Middleware v2.0', function () {
         {in: 'query', name: argName, type: 'number'},
         {in: 'query', name: argName, type: 'string', format: 'date'},
         {in: 'query', name: argName, type: 'string', format: 'date-time'},
+        {in: 'query', name: argName, type: 'string', format: 'date-time'},
+        {in: 'query', name: argName, type: 'string', format: 'date-time'},
         {in: 'query', name: argName, type: 'array', items: {type: 'integer'}}
       ];
       var values = [
@@ -261,6 +338,8 @@ describe('Swagger Validator Middleware v2.0', function () {
         1.1,
         '1981-03-12',
         '1981-03-12T08:16:00-04:00',
+        '2016-09-22T23:19:08Z',
+        '2015-12-15T21:51:20.860Z',
         [1, 2]
       ];
       var index = 0;
@@ -1055,6 +1134,64 @@ describe('Swagger Validator Middleware v2.0', function () {
           ], done));
       });
     });
+
+
+
+    it('should validate a valid piped response', function (done) {
+      var cPetStoreJson = _.cloneDeep(petStoreJson);
+
+      cPetStoreJson.paths['/pets/{id}'].get['x-swagger-router-controller'] = 'Pets';
+      cPetStoreJson.paths['/pets/{id}'].get.operationId = 'getPetById';
+
+      helpers.createServer([cPetStoreJson], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_getPetById': function (req, res) {
+              var s = new stream.Readable();
+              s.push(new Buffer(JSON.stringify(samplePet)));
+              s.push(null);
+              s.pipe(res);
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .expect(200)
+          .end(helpers.expectContent(samplePet, done));
+      });
+    });
+
+    it('should validate an invalid piped response', function (done) {
+      var cPetStoreJson = _.cloneDeep(petStoreJson);
+
+      cPetStoreJson.paths['/pets/{id}'].get['x-swagger-router-controller'] = 'Pets';
+      cPetStoreJson.paths['/pets/{id}'].get.operationId = 'getPetById';
+
+      helpers.createServer([cPetStoreJson], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_getPetById': function (req, res) {
+              var s = new stream.Readable();
+              s.push(new Buffer(JSON.stringify(sampleInvalidPet)));
+              s.push(null);
+              s.pipe(res);
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .expect(500)
+          .end(helpers.expectContent('Response validation failed: failed schema validation', done));
+      });
+    });
   });
 
   describe('issues', function () {
@@ -1186,6 +1323,346 @@ describe('Swagger Validator Middleware v2.0', function () {
           .get('/api/pets/1')
           .expect(304)
           .end(done);
+      });
+    });
+
+    it('should return an error for decimal "integers" (Issue 279)', function (done) {
+      var cPetStore = _.cloneDeep(petStoreJson);
+      var expectedMessage = 'Request validation failed: Parameter (arg0) is not a valid integer: 1.1';
+
+      cPetStore.paths['/pets/{id}'].get.parameters = [{
+        in: 'query',
+        name: 'arg0',
+        type: 'integer'
+      }];
+
+      helpers.createServer([cPetStore], {}, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .query({
+            arg0: 1.1
+          })
+          .expect(400)
+          .end(helpers.expectContent(expectedMessage, done));
+      });
+    });
+
+    it('should return an error for number+string "numbers" (Issue 279)', function (done) {
+      var cPetStore = _.cloneDeep(petStoreJson);
+      var expectedMessage = 'Request validation failed: Parameter (arg0) is not a valid number: 2something';
+
+      cPetStore.paths['/pets/{id}'].get.parameters = [{
+        in: 'query',
+        name: 'arg0',
+        type: 'number'
+      }];
+
+      helpers.createServer([cPetStore], {}, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .query({
+            arg0: '2something'
+          })
+          .expect(400)
+          .end(helpers.expectContent(expectedMessage, done));
+      });
+    });
+
+    it('should return an error for number+string "integers" (Issue 279)', function (done) {
+      var cPetStore = _.cloneDeep(petStoreJson);
+      var expectedMessage = 'Request validation failed: Parameter (arg0) is not a valid integer: 2something';
+
+      cPetStore.paths['/pets/{id}'].get.parameters = [{
+        in: 'query',
+        name: 'arg0',
+        type: 'integer'
+      }];
+
+      helpers.createServer([cPetStore], {}, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .query({
+            arg0: '2something'
+          })
+          .expect(400)
+          .end(helpers.expectContent(expectedMessage, done));
+      });
+    });
+
+    describe('should handle allowEmptyValue (Issue 282)', function () {
+      it('allowEmptyValue false', function (done) {
+        var cPetStore = _.cloneDeep(petStoreJson);
+        var expectedMessage = 'Request validation failed: Parameter (arg0) is not a valid integer: ';
+
+        cPetStore.paths['/pets/{id}'].get.parameters = [{
+            in: 'query',
+          name: 'arg0',
+          type: 'integer'
+        }];
+
+        helpers.createServer([cPetStore], {
+          swaggerRouterOptions: {
+            controllers: {
+              getPetById: function (req, res) {
+                res.end('OK');
+              }
+            }
+          }
+        }, function (app) {
+          request(app)
+            .get('/api/pets/1')
+            .query({
+              arg0: ''
+            })
+            .expect(400)
+            .end(helpers.expectContent(expectedMessage, done));
+        });
+      });
+
+      it('allowEmptyValue true', function (done) {
+        var cPetStore = _.cloneDeep(petStoreJson);
+
+        cPetStore.paths['/pets/{id}'].get.parameters = [{
+            in: 'query',
+          name: 'arg0',
+          type: 'integer',
+          allowEmptyValue: true
+        }];
+
+        helpers.createServer([cPetStore], {
+          swaggerRouterOptions: {
+            controllers: {
+              getPetById: function (req, res) {
+                res.end('OK');
+              }
+            }
+          }
+        }, function (app) {
+          try {
+            request(app)
+              .get('/api/pets/1')
+              .query({
+                arg0: ''
+              })
+              .expect(200)
+              .end(helpers.expectContent('OK', done));
+          } catch (err) {
+            done();
+          }
+        });
+      });
+    });
+
+    it('should handle pattern validation for collectionFormat values (Issue 300)', function (done) {
+      var pattern = 'fake[|d|r]+';
+      var expectedMessage = 'Request validation failed: ' +
+            'Parameter (myArr) value at index 2 does not match required pattern: ' + pattern;
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.paths['/pets'].get.parameters.push({
+          in: 'query',
+        name: 'myArr',
+        description: 'Simple array value',
+        required: true,
+        type: 'array',
+        items: {
+          type: 'string',
+          pattern: pattern
+        },
+        collectionFormat: 'multi'
+      });
+
+      helpers.createServer([swaggerObject], {
+        swaggerRouterOptions: {
+          controllers: {
+            getAllPets: function (req, res) {
+              res.end('NOT OK');
+            }
+          }
+        }
+      }, function(app) {
+        request(app)
+          .get('/api/pets')
+          .query({myArr: ['faker', 'faked', 'fakes']})
+          .expect(400)
+          .end(helpers.expectContent(expectedMessage, done));
+      });
+    });
+
+    it('should handle consumes/produces with charset (Issue 295)', function (done) {
+      var pet = {
+        id: 1,
+        name: 'Fake Pet'
+      };
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.paths['/pets'].post.consumes = ['application/xml', 'application/json; charset=utf-8'];
+      swaggerObject.paths['/pets'].post.produces = ['application/xml', 'application/json; charset=utf-8'];
+
+      helpers.createServer([swaggerObject], {
+        swaggerRouterOptions: {
+          controllers: {
+            createPet: function (req, res) {
+              res.setHeader('content-type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify(req.swagger.params.pet.value));
+            }
+          }
+        }
+      }, function (app) {
+        request(app)
+          .post('/api/pets')
+          .set('content-type', 'application/json; charset=utf-8')
+          .send(pet)
+          .expect(200)
+          .end(helpers.expectContent(pet));
+
+        request(app)
+          .post('/api/pets')
+          .set('content-type', 'application/json')
+          .send(pet)
+          .expect(200)
+          .end(helpers.expectContent(pet, done));
+      });
+    });
+
+    it('should handle string values for arrays (PR #341)', function (done) {
+      var cPetStore = _.cloneDeep(petStoreJson);
+      var responseValue = [['abc', 'abbbc', 'abbbbbbbc']];
+
+      cPetStore.paths['/tags'] = {
+        get: {
+          summary: 'Get All Tags',
+          description: 'Retrieves a list of all available tags.',
+          operationId: 'getAllTags',
+          responses: {
+            '200': {
+              description: 'OK',
+              schema: {
+                type: 'array',
+                items: {
+                  type: 'array',
+                  items: {
+                    type: 'string',
+                    pattern: 'ab+c'
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+
+      helpers.createServer([cPetStore], {
+        swaggerRouterOptions: {
+          controllers: {
+            getAllTags: function (req, res) {
+              res.end(JSON.stringify(responseValue));
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        try {
+          request(app)
+            .get('/api/tags')
+            .expect(200)
+            .end(helpers.expectContent(responseValue, done));
+        } catch (err) {
+          done();
+        }
+      });
+    });
+
+    it('should not throw an error for empty responses that validate void (new issue)', function (done) {
+      var cPetStoreJson = _.cloneDeep(petStoreJson);
+
+      cPetStoreJson.paths['/pets/categories/count'] = {
+        get: {
+          'x-swagger-router-controller': 'Pets',
+          operationId: 'getCategoryCount',
+          responses: {
+            '200': {
+              description: 'empty response'
+            }
+          }
+        }
+      };
+
+      helpers.createServer([cPetStoreJson], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_getCategoryCount': function (req, res) {
+              return res.end();
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/categories/count')
+          .expect(200)
+          .end(helpers.expectContent('', done));
+      });
+    });
+
+
+    it('should not throw an error for empty responses that validate void even with empty res.write (new issue)', function (done) {
+      var cPetStoreJson = _.cloneDeep(petStoreJson);
+
+      cPetStoreJson.paths['/pets/categories/count'] = {
+        get: {
+          'x-swagger-router-controller': 'Pets',
+          operationId: 'getCategoryCount',
+          responses: {
+            '200': {
+              description: 'empty response'
+            }
+          }
+        }
+      };
+
+      helpers.createServer([cPetStoreJson], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_getCategoryCount': function (req, res) {
+              res.write();
+              return res.end();
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/categories/count')
+          .expect(200)
+          .end(helpers.expectContent('', done));
+      });
+    });
+
+    it('should set failedValidation for Content-Type validation errors (PR 420)', function (done) {
+      var swaggerObject = _.cloneDeep(petStoreJson);
+
+      swaggerObject.paths['/pets'].post.consumes = ['application/xml'];
+
+      helpers.createServer([swaggerObject], {}, function (app) {
+        request(app)
+          .post('/api/pets')
+          .set('Accept', 'application/json')
+          .send({
+            id: 1,
+            name: 'Fake Pet'
+          })
+          .expect(400)
+          .end(helpers.expectContent({
+            failedValidation: true,
+            message: 'Invalid content type (application/json).  These are valid: application/xml'
+          }, done));
       });
     });
   });

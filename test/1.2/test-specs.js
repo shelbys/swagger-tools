@@ -26,7 +26,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var async = require('async');
 var spec = (typeof window === 'undefined' ? require('../../lib/specs') : SwaggerTools.specs).v1_2; // jshint ignore:line
@@ -150,7 +150,7 @@ describe('Specification v1.2', function () {
           assert.deepEqual(result.apiDeclarations[0].errors, [
             {
               code: 'ONE_OF_MISSING',
-              message: 'Data does not match any schemas from \'oneOf\'',
+              message: 'Not a valid Order definition',
               path: [
                 'models',
                 'Order',
@@ -214,7 +214,7 @@ describe('Specification v1.2', function () {
           assert.deepEqual(result.apiDeclarations[0].errors, [
             {
               code: 'ONE_OF_MISSING',
-              message: 'Data does not match any schemas from \'oneOf\'',
+              message: 'Not a valid parameter definition',
               path: [
                 'apis',
                 '1',
@@ -251,6 +251,19 @@ describe('Specification v1.2', function () {
                     'paramType'
                   ]
                 }
+              ]
+            },
+            {
+              code: 'ENUM_MISMATCH',
+              message: 'No enum match for: fake',
+              path: [
+                'apis',
+                '1',
+                'operations',
+                '0',
+                'parameters',
+                '1',
+                'paramType'
               ]
             }
           ]);
@@ -1434,7 +1447,7 @@ describe('Specification v1.2', function () {
         }
 
         _.each(results, function (result, index) {
-          assert.deepEqual(eResults[index], result);
+          assert.deepEqual(result, eResults[index]);
         });
 
         done();
@@ -1511,7 +1524,8 @@ describe('Specification v1.2', function () {
           {
             code: 'OBJECT_MISSING_REQUIRED_PROPERTY',
             message: 'Missing required property: name',
-            path: []
+            path: [],
+            title: 'Composed Pet'
           }
         ]);
 

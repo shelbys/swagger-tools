@@ -24,7 +24,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var debug = require('debug')('swagger-tools:middleware');
 var helpers = require('./lib/helpers');
 
@@ -71,49 +71,62 @@ var initializeMiddleware = function initializeMiddleware (rlOrSO, resources, cal
     }, 0) > 0) {
       err = new Error('Swagger document(s) failed validation so the server cannot start');
 
+      err.failedValidation = true;
       err.results = results;
     }
 
     debug('  Validation: %s', err ? 'failed' : 'succeeded');
 
-    if (err) {
-      if (process.env.NODE_ENV === 'test') {
+    try {
+      if (err) {
         throw err;
-      } else {
-        helpers.printValidationResults(spec.version, rlOrSO, resources, results, true);
-
-        process.exit(helpers.getErrorCount(results) > 0 ? 1 : 0);
       }
-    }
 
-    callback({
-      // Create a wrapper to avoid having to pass the non-optional arguments back to the swaggerMetadata middleware
-      swaggerMetadata: function () {
-        var swaggerMetadata = require('./middleware/swagger-metadata');
+      callback({
+        // Create a wrapper to avoid having to pass the non-optional arguments back to the swaggerMetadata middleware
+        swaggerMetadata: function () {
+          var swaggerMetadata = require('./middleware/swagger-metadata');
 
-        return swaggerMetadata.apply(undefined, args.slice(0, args.length - 1));
-      },
-      swaggerRouter: require('./middleware/swagger-router'),
-      swaggerSecurity: require('./middleware/swagger-security'),
-      // Create a wrapper to avoid having to pass the non-optional arguments back to the swaggerUi middleware
-      swaggerUi: function (options) {
-        var swaggerUi = require('./middleware/swagger-ui');
-        var suArgs = [rlOrSO];
+          return swaggerMetadata.apply(undefined, args.slice(0, args.length - 1));
+        },
+        swaggerRouter: require('./middleware/swagger-router'),
+        swaggerSecurity: require('./middleware/swagger-security'),
+        // Create a wrapper to avoid having to pass the non-optional arguments back to the swaggerUi middleware
+        swaggerUi: function (options) {
+          var swaggerUi = require('./middleware/swagger-ui');
+          var suArgs = [rlOrSO];
 
-        if (spec.version === '1.2') {
-          suArgs.push(_.reduce(resources, function (map, resource) {
-            map[resource.resourcePath] = resource;
+          if (spec.version === '1.2') {
+            suArgs.push(_.reduce(resources, function (map, resource) {
+              map[resource.resourcePath] = resource;
 
-            return map;
-          }, {}));
+              return map;
+            }, {}));
+          }
+
+          suArgs.push(options || {});
+
+          return swaggerUi.apply(undefined, suArgs);
+        },
+        swaggerValidator: require('./middleware/swagger-validator')
+      });
+    } catch (err) {
+      if (process.env.RUNNING_SWAGGER_TOOLS_TESTS === 'true') {
+        // When running the swagger-tools test suite, we want to return an error instead of exiting the process.  This
+        // does not mean that this function is an error-first callback but due to json-refs using Promises, we have to
+        // return the error to avoid the error being swallowed.
+        callback(err);
+      } else {
+        if (err.failedValidation === true) {
+          helpers.printValidationResults(spec.version, rlOrSO, resources, results, true);
+        } else {
+          console.error('Error initializing middleware');
+          console.error(err.stack);
         }
 
-        suArgs.push(options || {});
-
-        return swaggerUi.apply(undefined, suArgs);
-      },
-      swaggerValidator: require('./middleware/swagger-validator')
-    });
+        process.exit(1);
+      }
+    }
   });
 
   spec.validate.apply(spec, args);

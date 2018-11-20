@@ -24,7 +24,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var async = require('async');
 var bp = require('body-parser');
 var cHelpers = require('../lib/helpers');
@@ -39,7 +39,10 @@ var bodyParserOptions = {
   extended: false
 };
 var multerOptions = {
-  inMemory: true
+  storage: multer.memoryStorage()
+};
+var textBodyParserOptions = {
+  type: '*/*'
 };
 
 var jsonBodyParser = bp.json();
@@ -51,24 +54,41 @@ var queryParser = function (req, res, next) {
 
   return next();
 };
+var realTextBodyParser = bp.text(textBodyParserOptions);
+var textBodyParser = function (req, res, next) {
+  if (_.isUndefined(req.body)) {
+    realTextBodyParser(req, res, next);
+  } else {
+    next();
+  }
+};
 var urlEncodedBodyParser = bp.urlencoded(bodyParserOptions);
-var bodyParser = function (req, res, callback) {
+var bodyParser = function (req, res, next) {
   if (_.isUndefined(req.body)) {
     urlEncodedBodyParser(req, res, function (err) {
       if (err) {
-        callback(err);
+        next(err);
       } else {
-        jsonBodyParser(req, res, callback);
+        jsonBodyParser(req, res, next);
       }
     });
   } else {
-    callback();
+    next();
   }
 };
-var multiPartParser = multer(multerOptions);
+var realMultiPartParser = multer(multerOptions);
+var makeMultiPartParser = function (parser) {
+  return function (req, res, next) {
+    if (_.isUndefined(req.files)) {
+      parser(req, res, next);
+    } else {
+      next();
+    }
+  };
+};
 
 // Helper functions
-var expressStylePath = function expressStylePath (basePath, apiPath) {
+var expressStylePath = function (basePath, apiPath) {
   basePath = parseurl({url: basePath || '/'}).pathname || '/';
 
   // Make sure the base path starts with '/'
@@ -89,94 +109,12 @@ var expressStylePath = function expressStylePath (basePath, apiPath) {
   // Replace Swagger syntax for path parameters with Express' version (All Swagger path parameters are required)
   return (basePath + apiPath).replace(/{/g, ':').replace(/}/g, '');
 };
-var convertValue = function convertValue (value, schema, type) {
-  var original = value;
 
-  if (_.isUndefined(type)) {
-    type = mHelpers.getParameterType(schema);
-  }
-
-  // If there is no value, do not convert it
-  if (_.isUndefined(value)) {
-    return value;
-  }
-
-  switch (type) {
-  case 'array':
-    if (_.isString(value) && schema.collectionFormat !== 'multi') {
-      switch (schema.collectionFormat) {
-      case 'csv':
-      case undefined:
-        value = value.split(',');
-        break;
-      case 'pipes':
-        value = value.split('|');
-        break;
-      case 'ssv':
-        value = value.split(' ');
-        break;
-      case 'tsv':
-        value = value.split('\t');
-        break;
-      }
-    }
-
-    value = _.map(value, function (item) {
-      return convertValue(item, _.isArray(schema.items) ? schema.items[0] : schema.items);
-    });
-
-    break;
-
-  case 'boolean':
-    if (!_.isBoolean(value)) {
-      if (['false', 'true'].indexOf(value) === -1) {
-        value = original;
-      } else {
-        value = value === 'true' || value === true ? true : false;
-      }
-    }
-
-    break;
-
-  case 'integer':
-    if (!_.isNumber(value)) {
-      value = parseInt(value, 10);
-
-      if (isNaN(value)) {
-        value = original;
-      }
-    }
-
-    break;
-
-  case 'number':
-    if (!_.isNumber(value)) {
-      value = parseFloat(value);
-
-      if (isNaN(value)) {
-        value = original;
-      }
-    }
-
-    break;
-
-  case 'string':
-    if (['date', 'date-time'].indexOf(schema.format) > -1 && !_.isDate(value)) {
-      value = new Date(value);
-
-      if (!_.isDate(value) || value.toString() === 'Invalid Date') {
-        value = original;
-      }
-    }
-
-    break;
-
-  }
-
-  return value;
-};
-var processOperationParameters = function processOperationParameters (version, pathKeys, pathMatch, req, res, next) {
-  var swaggerMetadata = req.swagger;
+var processOperationParameters = function (swaggerMetadata, pathKeys, pathMatch, req, res, next) {
+  var version = swaggerMetadata.swaggerVersion;
+  var spec = cHelpers.getSpec(cHelpers.getSwaggerVersion(version === '1.2' ?
+                                                         swaggerMetadata.resourceListing :
+                                                         swaggerMetadata.swaggerObject), true);
   var parameters = !_.isUndefined(swaggerMetadata) ?
                      (version === '1.2' ? swaggerMetadata.operation.parameters : swaggerMetadata.operationParameters) :
                      undefined;
@@ -187,28 +125,32 @@ var processOperationParameters = function processOperationParameters (version, p
 
   debug('  Processing Parameters');
 
-  async.map(_.reduce(parameters, function (requestParsers, parameter) {
+  var parsers = _.reduce(parameters, function (requestParsers, parameter) {
     var contentType = req.headers['content-type'];
     var paramLocation = version === '1.2' ? parameter.paramType : parameter.schema.in;
     var paramType = mHelpers.getParameterType(version === '1.2' ? parameter : parameter.schema);
+    var parsableBody = mHelpers.isModelType(spec, paramType) || ['array', 'object'].indexOf(paramType) > -1;
     var parser;
 
     switch (paramLocation) {
-    case 'body':
-    case 'form':
-    case 'formData':
-      if (paramType.toLowerCase() === 'file' || (contentType && contentType.split(';')[0] === 'multipart/form-data')) {
-        parser = multiPartParser;
-      } else {
-        parser = bodyParser;
-      }
+      case 'body':
+      case 'form':
+      case 'formData':
+        if (paramType.toLowerCase() === 'file' || (contentType && contentType.split(';')[0] === 'multipart/form-data')) {
+          // Do not add a parser, multipart will be handled after
+          break;
+        } else if (paramLocation !== 'body' || parsableBody) {
+          parser = bodyParser;
+        } else {
+          parser = textBodyParser;
+        }
 
-      break;
+        break;
 
-    case 'query':
-      parser = queryParser;
+      case 'query':
+        parser = queryParser;
 
-      break;
+        break;
     }
 
     if (parser && requestParsers.indexOf(parser) === -1) {
@@ -216,7 +158,38 @@ var processOperationParameters = function processOperationParameters (version, p
     }
 
     return requestParsers;
-  }, []), function (parser, callback) {
+  }, []);
+
+  // Multipart is handled by multer, which needs an array of {parameterName, maxCount}
+  var multiPartFields = _.reduce(parameters, function (fields, parameter) {
+    var paramLocation = version === '1.2' ? parameter.paramType : parameter.schema.in;
+    var paramType = mHelpers.getParameterType(version === '1.2' ? parameter : parameter.schema);
+    var paramName = version === '1.2' ? parameter.name : parameter.schema.name;
+
+    switch (paramLocation) {
+      case 'body':
+      case 'form':
+      case 'formData':
+        if (paramType.toLowerCase() === 'file') {
+          // Swagger spec does not allow array of files, so maxCount should be 1
+          fields.push({name: paramName, maxCount: 1});
+        }
+        break;
+    }
+
+    return fields;
+  }, []);
+  
+  var contentType = req.headers['content-type'];
+  if (multiPartFields.length) {
+    // If there are files, use multer#fields
+    parsers.push(makeMultiPartParser(realMultiPartParser.fields(multiPartFields)));
+  } else if (contentType && contentType.split(';')[0] === 'multipart/form-data') {
+    // If no files but multipart form, use empty multer#array for text fields
+    parsers.push(makeMultiPartParser(realMultiPartParser.array()));
+  }
+
+  async.map(parsers, function (parser, callback) {
     parser(req, res, callback);
   }, function (err) {
     if (err) {
@@ -225,6 +198,7 @@ var processOperationParameters = function processOperationParameters (version, p
 
     _.each(parameters, function (parameterOrMetadata, index) {
       var parameter = version === '1.2' ? parameterOrMetadata : parameterOrMetadata.schema;
+      var pLocation = version === '1.2' ? parameter.paramType : parameter.in;
       var pType = mHelpers.getParameterType(parameter);
       var oVal;
       var value;
@@ -234,7 +208,7 @@ var processOperationParameters = function processOperationParameters (version, p
 
       // Located here to make the debug output pretty
       oVal = mHelpers.getParameterValue(version, parameter, pathKeys, pathMatch, req, debug);
-      value = convertValue(oVal, parameter, pType);
+      value = mHelpers.convertValue(oVal, _.isUndefined(parameter.schema) ? parameter : parameter.schema, pType, pLocation);
 
       debug('      Value: %s', value);
 
@@ -251,7 +225,7 @@ var processOperationParameters = function processOperationParameters (version, p
     return next();
   });
 };
-var processSwaggerDocuments = function processSwaggerDocuments (rlOrSO, apiDeclarations) {
+var processSwaggerDocuments = function (rlOrSO, apiDeclarations) {
   if (_.isUndefined(rlOrSO)) {
     throw new Error('rlOrSO is required');
   } else if (!_.isPlainObject(rlOrSO)) {
@@ -260,7 +234,7 @@ var processSwaggerDocuments = function processSwaggerDocuments (rlOrSO, apiDecla
 
   var spec = cHelpers.getSpec(cHelpers.getSwaggerVersion(rlOrSO), true);
   var apiCache = {};
-  var composeParameters = function composeParameters (apiPath, method, path, operation) {
+  var composeParameters = function (apiPath, method, path, operation) {
     var cParams = [];
     var seenParams = [];
 
@@ -284,7 +258,7 @@ var processSwaggerDocuments = function processSwaggerDocuments (rlOrSO, apiDecla
 
     return cParams;
   };
-  var createCacheEntry = function createCacheEntry (adOrSO, apiOrPath, indexOrName, indent) {
+  var createCacheEntry = function (adOrSO, apiOrPath, indexOrName, indent) {
     var apiPath = spec.version === '1.2' ? apiOrPath.path : indexOrName;
     var expressPath = expressStylePath(adOrSO.basePath, spec.version === '1.2' ? apiOrPath.path: indexOrName);
     var keys = [];
@@ -396,7 +370,7 @@ var processSwaggerDocuments = function processSwaggerDocuments (rlOrSO, apiDecla
  *
  * @returns the middleware function
  */
-exports = module.exports = function swaggerMetadataMiddleware (rlOrSO, apiDeclarations) {
+exports = module.exports = function (rlOrSO, apiDeclarations) {
   debug('Initializing swagger-metadata middleware');
 
   var apiCache = processSwaggerDocuments(rlOrSO, apiDeclarations);
@@ -472,7 +446,7 @@ exports = module.exports = function swaggerMetadataMiddleware (rlOrSO, apiDeclar
 
     if (metadata.operation) {
       // Process the operation parameters
-      return processOperationParameters(swaggerVersion, cacheEntry.keys, match, req, res, next, debug);
+      return processOperationParameters(metadata, cacheEntry.keys, match, req, res, next, debug);
     } else {
       return next();
     }

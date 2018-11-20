@@ -50,7 +50,7 @@ initializeSwagger(rlJson, [petJson, storeJson, userJson], function (swaggerMiddl
 });
 ```
 
-`initializeMiddlware` will halt server startup upon any unrecoverable Swagger document(s) validation error, printing out
+`initializeMiddleware` will halt server startup upon any unrecoverable Swagger document(s) validation error, printing out
 the errors/warnings in that case.  The argument passed to the callback has the following properties, each corresponding
 to a middleware function documented below.  The order in the following list is the suggested `app.use` order:
 
@@ -71,7 +71,7 @@ All Swagger Middleware uses the [debug](debug) module to allow you to have a bet
 middleware initialization and processing lifecycle.  To enable debugging globally, just set the `DEBUG` environment
 variable to be `swagger-tools:middleware:*`.  If you want to only see debugging output for a specific middleware, you
 can do that too.  To do so, you sould set `DEBUG` to a value like this:
-`swagger-tools:middleware:{middlware-short-name}` where the `middleware-short-name` is one of the following: `metadata`,
+`swagger-tools:middleware:{middleware-short-name}` where the `middleware-short-name` is one of the following: `metadata`,
 `router`, `security`, `ui` or `validator`.  So if I wanted to see only swagger-validator debugging information, I would
 set `DEBUG` to `swagger-tools:middleware:validator`.  Here is an example of starting a Node.js server with debugging
 enabled for all Swagger middlewares:
@@ -229,6 +229,8 @@ between the two.
 we assume the value is a path to a directory that contain controller modules.  If the value is an array, we assume the
 value is an array of paths to directories that contain controller modules.  If the value is an object, we assume the
 object keys are the handler name _({ControllerName}_{HandlerFunctionName}) and the value is a function.
+* **options.ignoreMissingHandlers:** `[boolean]` When `false` *(default)*, a `500` is returned when a handler cannot be
+found.  When `true`, we will ignore the missing handler and send the request downstream.
 * **options.useStubs:** `[boolean]` Whether or not stub handlers should be used for routes with no defined controller
 or the controller could not be found.
 
@@ -400,8 +402,8 @@ where each operation tells you which controller and function will be used based 
 
 If `x-swagger-router-controller` is omitted and only `operationId` is given, the router will try to match directly
 to a method  using the `operationId` as method name. This works only if the `controller` option is passed to the router
-configuration.  _(Note: This limitation, the need to manually create your `controller` option, will go away when issue
-#219 and #221 are completed.)_
+configuration.  _(Note: This limitation, the need to manually create your `controller` option, will go away when
+issues #219 and #221 are completed.)_
 
 A new option (since 0.8.4) is the addition of the `x-swagger-router-handle-subpaths` extension to the Swagger path
 component. By setting this property to `true`, it indicates to Swagger Router that it should match and route all 
@@ -497,8 +499,12 @@ The Swagger UI middleware is used to serve your Swagger document(s) via an API a
 
 * **options:** `object` The middleware options
 * **options.apiDocs:** `string=/api-docs` The path to serve the Swagger documents from
+* **options.apiDocsPrefix:** `string=` The prefix to prepend to the `options.apiDocs` _(This is required when serving a
+swagger-tools based API behind a reverse proxy.)_
 * **options.swaggerUi:** `string=/docs` The path to serve Swagger UI from
 * **options.swaggerUiDir:** `string` The filesystem path to your custom swagger-ui deployment to serve
+* **options.swaggerUiPrefix:** `string` The prefix to prepend to the `options.swaggerUi` _(This is required when serving a
+swagger-tools UI behind a reverse proxy.)_
 
 **Returns**
 

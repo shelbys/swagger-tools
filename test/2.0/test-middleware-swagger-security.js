@@ -27,19 +27,25 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var helpers = require('../helpers');
 var request = require('supertest');
 
 var petStoreJson = _.cloneDeep(require('../../samples/2.0/petstore.json'));
 
-var SecurityDef = function (allow) {
+var SecurityDef = function (allow, delay) {
   var self = this;
 
   if (allow === undefined) {
     allow = true;
+  }
+
+  if (delay === undefined) {
+    delay = 0;
   }
 
   this.called = false;
@@ -49,7 +55,9 @@ var SecurityDef = function (allow) {
 
     self.called = true;
 
-    cb(allow ? null : new Error('disallowed'));
+    setTimeout(function() {
+      cb(allow ? null : new Error('disallowed'));
+    }, delay);
   };
 };
 var ApiKeySecurityDef = function() {
@@ -464,6 +472,30 @@ describe('Swagger Security Middleware v2.0', function () {
           .get('/api/securedOr')
           .expect(200)
           .end(helpers.expectContent('OK', done));
+      });
+    });
+
+    it('should authorize first if both are true', function(done) {
+      var local = new SecurityDef(true, 400);
+      var local2 = new SecurityDef(true);
+
+      helpers.createServer([petStoreJson], {
+        swaggerRouterOptions: swaggerRouterOptions,
+        swaggerSecurityOptions: {
+          local: local.func,
+          local2: local2.func
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/securedOr')
+          .expect(200)
+          .end(function(err, res) {
+            helpers.expectContent('OK')(err, res);
+
+            assert(!local2.called);
+
+            done();
+          });
       });
     });
 

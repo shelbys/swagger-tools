@@ -24,40 +24,43 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var async = require('async');
 var cHelpers = require('../lib/helpers');
 var debug = require('debug')('swagger-tools:middleware:validator');
 var mHelpers = require('./helpers');
 var validators = require('../lib/validators');
 
-var sendData = function sendData (swaggerVersion, res, data, encoding, skipped) {
+var sendData = function (swaggerVersion, res, data, encoding, skipped) {
   // 'res.end' requires a Buffer or String so if it's not one, create a String
   if (!(data instanceof Buffer) && !_.isString(data)) {
     data = JSON.stringify(data);
   }
 
   if (skipped) {
-    if (swaggerVersion === '1.2') {
-      debug('  Response validation: skipped (No responseMessage definition for \'%d\')', res.statusCode);
+    if (_.isUndefined(res.getHeader('content-type'))) {
+      // This scenario only happens for a 204/304 response and there is no Content-Type
+      debug('    Validation: skipped (Cached response for \'%d\')', res.statusCode);
+    } else if (swaggerVersion === '1.2') {
+      debug('    Validation: skipped (No responseMessage definition)', res.statusCode);
     } else {
-      debug('  Response validation: skipped (No response definition for \'%d\' or \'default\')', res.statusCode);
+      debug('    Validation: skipped (No response definition)', res.statusCode);
     }
   } else {
-    debug('  Response validation: succeeded');
+    debug('    Validation: succeeded');
   }
 
   res.end(data, encoding);
 };
 
-var send400 = function send400 (req, res, next, err) {
+var send400 = function (req, res, next, err) {
   var currentMessage;
   var validationMessage;
 
   res.statusCode = 400;
 
   // Format the errors to include the parameter information
-  if (err.failedValidation === true) {
+  if (err.failedValidation === true && err.paramName) {
     currentMessage = err.message;
     validationMessage = 'Parameter (' + err.paramName + ') ';
 
@@ -104,11 +107,13 @@ var send400 = function send400 (req, res, next, err) {
 
   return next(err);
 };
-var validateValue = function validateValue (req, schema, path, val, callback) {
+var validateValue = function (req, schema, path, val, location, callback) {
   var document = req.swagger.apiDeclaration || req.swagger.swaggerObject;
   var version = req.swagger.apiDeclaration ? '1.2' : '2.0';
   var isModel = mHelpers.isModelParameter(version, schema);
   var spec = cHelpers.getSpec(version);
+
+  val = mHelpers.convertValue(val, schema, mHelpers.getParameterType(schema), location);
 
   try {
     validators.validateSchemaConstraints(version, schema, path, val);
@@ -164,22 +169,61 @@ var validateValue = function validateValue (req, schema, path, val, callback) {
     callback();
   }
 };
-var wrapEnd = function wrapEnd (req, res, next) {
+var wrapEnd = function (req, res, next) {
   var operation = req.swagger.operation;
   var originalEnd = res.end;
   var vPath = _.cloneDeep(req.swagger.operationPath);
   var swaggerVersion = req.swagger.swaggerVersion;
 
-  res.end = function end (data, encoding) {
-    var schema = operation;
-    var val = data;
+  var writtenData = [];
 
-    // Replace 'res.end' with the original
+  var originalWrite = res.write;
+  res.write = function(data) {
+    if(typeof data !== 'undefined') {
+      writtenData.push(data);
+    }
+    // Don't call the originalWrite. We want to validate the data before writing
+    // it to our response.
+  };
+
+  res.end = function (data, encoding) {
+    var schema = operation;
+    var val;
+    if(data)
+    {
+      if(data instanceof Buffer) {
+        writtenData.push(data);
+        val = Buffer.concat(writtenData);
+      }
+      else if(data instanceof String) {
+        writtenData.push(new Buffer(data));
+        val = Buffer.concat(writtenData);
+      }
+      else {
+        val = data;
+      }
+    }
+    else if(writtenData.length !== 0) {
+      val = Buffer.concat(writtenData);
+    }
+
+    var responseCode;
+
+    // Replace 'res.end' and 'res.write' with the originals
+    res.write = originalWrite;
     res.end = originalEnd;
+
+    debug('  Response validation:');
 
     // If the data is a buffer, convert it to a string so we can parse it prior to validation
     if (val instanceof Buffer) {
-      val = data.toString(encoding);
+      val = val.toString(encoding);
+    }
+
+    // Express removes the Content-Type header from 204/304 responses which makes response validation impossible
+    if (_.isUndefined(res.getHeader('content-type')) && [204, 304].indexOf(res.statusCode) > -1) {
+      sendData(swaggerVersion, res, val, encoding, true);
+      return; // do NOT call next() here, doing so would execute remaining middleware chain twice
     }
 
     try {
@@ -203,6 +247,8 @@ var wrapEnd = function wrapEnd (req, res, next) {
             if (responseMessage.code === res.statusCode) {
               vPath.push('responseMessages', index.toString());
 
+              responseCode = responseMessage.code;
+
               return true;
             }
           });
@@ -212,14 +258,17 @@ var wrapEnd = function wrapEnd (req, res, next) {
           }
         } else {
           schema = _.find(operation.responses, function (response, code) {
-            if (code === res.statusCode.toString()) {
+            if (code === (res.statusCode || 200).toString()) {
               vPath.push('responses', code);
+
+              responseCode = code;
 
               return true;
             }
           });
 
           if (_.isUndefined(schema) && operation.responses.default) {
+            responseCode = 'default';
             schema = operation.responses.default;
 
             vPath.push('responses', 'default');
@@ -227,23 +276,24 @@ var wrapEnd = function wrapEnd (req, res, next) {
         }
       }
 
+      debug('    Response ' + (swaggerVersion === '1.2' ? 'message' : 'code') + ': ' + responseCode);
+
       if (_.isUndefined(schema)) {
-        sendData(swaggerVersion, res, data, encoding, true);
+        sendData(swaggerVersion, res, val, encoding, true);
       } else {
-        validateValue(req, schema, vPath, val, function (err) {
+        validateValue(req, schema, vPath, val, 'body', function (err) {
           if (err) {
             throw err;
           }
-          
-          sendData(swaggerVersion, res, data, encoding, false);
+          sendData(swaggerVersion, res, val, encoding, true);
         });
       }
     } catch (err) {
       if (err.failedValidation) {
         err.originalResponse = data;
         err.message = 'Response validation failed: ' + err.message.charAt(0).toLowerCase() + err.message.substring(1);
-        
-        debug('  Response validation: failed');
+
+        debug('    Validation: failed');
 
         mHelpers.debugError(err, debug);
       }
@@ -264,7 +314,7 @@ var wrapEnd = function wrapEnd (req, res, next) {
  *
  * @returns the middleware function
  */
-exports = module.exports = function swaggerValidatorMiddleware (options) {
+exports = module.exports = function (options) {
   debug('Initializing swagger-validator middleware');
 
   if (_.isUndefined(options)) {
@@ -284,23 +334,32 @@ exports = module.exports = function swaggerValidatorMiddleware (options) {
     debug('  Will process: %s', _.isUndefined(operation) ? 'no' : 'yes');
 
     if (!_.isUndefined(operation)) {
-      // If necessary, override 'res.send'
+      // If necessary, override 'res.end'
       if (options.validateResponse === true) {
         wrapEnd(req, res, next);
       }
 
+      debug('  Request validation:');
+
       // Validate the request
       try {
         // Validate the content type
-        validators.validateContentType(req.swagger.swaggerVersion === '1.2' ?
+        try {
+          validators.validateContentType(req.swagger.swaggerVersion === '1.2' ?
                                          req.swagger.api.consumes :
                                          req.swagger.swaggerObject.consumes,
-                                       operation.consumes, req);
+                                         operation.consumes, req);
+        } catch (err) {
+          err.failedValidation = true;
+
+          throw err;
+        }
 
         async.map(swaggerVersion === '1.2' ?
                   operation.parameters :
                   req.swagger.operationParameters, function (parameter, oCallback) {
                     var schema = swaggerVersion === '1.2' ? parameter : parameter.schema;
+                    var pLocation = swaggerVersion === '1.2' ? schema.paramType : schema.in;
                     var val;
 
                     paramName = schema.name;
@@ -317,14 +376,14 @@ exports = module.exports = function swaggerValidatorMiddleware (options) {
                       return oCallback();
                     }
 
-                    validateValue(req, schema, paramPath, val, oCallback);
+                    validateValue(req, schema, paramPath, val, pLocation, oCallback);
 
                     paramIndex++;
                   }, function (err) {
                     if (err) {
                       throw err;
                     } else {
-                      debug('  Request validation: succeeded');
+                      debug('    Validation: succeeded');
 
                       return next();
                     }
@@ -335,10 +394,12 @@ exports = module.exports = function swaggerValidatorMiddleware (options) {
             err.path = paramPath;
           }
 
-          err.paramName = paramName;
+          if (paramName) {
+            err.paramName = paramName;
+          }
         }
 
-        debug('  Request validation: failed');
+        debug('    Validation: failed');
 
         mHelpers.debugError(err, debug);
 

@@ -28,8 +28,10 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var helpers = require('../helpers');
 var path = require('path');
@@ -56,7 +58,7 @@ describe('Swagger UI Middleware v2.0', function () {
     }, function (app) {
       request(app)
       .get('/api-docs2')
-      .expect(200)
+        .expect(200)
       .end(helpers.expectContent(swaggerObject, done));
     });
   });
@@ -67,6 +69,7 @@ describe('Swagger UI Middleware v2.0', function () {
         .get('/docs/') // Trailing slash to avoid a 303
         .expect(200)
         .expect('content-type', 'text/html; charset=UTF-8')
+        .expect('swagger-api-docs-url', '/api-docs')
         .end(done);
     });
   });
@@ -81,6 +84,7 @@ describe('Swagger UI Middleware v2.0', function () {
         .get('/docs2/') // Trailing slash to avoid a 303
         .expect(200)
         .expect('content-type', 'text/html; charset=UTF-8')
+        .expect('swagger-api-docs-url', '/api-docs')
         .end(done);
     });
   });
@@ -130,7 +134,7 @@ describe('Swagger UI Middleware v2.0', function () {
           request(app)
             .get('/docs/package.json')
             .expect(200)
-            .expect('content-type', 'application/json')
+            .expect('content-type', /application\/json/)
             .end(function (err, res) {
               if (err) {
                 return done(err);
@@ -144,6 +148,22 @@ describe('Swagger UI Middleware v2.0', function () {
       });
     });
 
+    it('should serve Swagger UI with Swagger UI Prefix setting (issue #297)', function (done) {
+      helpers.createServer([swaggerObject], {
+        swaggerUiOptions: {
+          swaggerUi: '/docs2',
+          swaggerUiPrefix: '/something'
+        }
+      }, function (app) {
+        request(app)
+          .get('/docs2/') // Trailing slash to avoid a 303
+          .expect(200)
+          .expect('content-type', 'text/html; charset=UTF-8')
+          .expect('swagger-api-docs-url', '/something/api-docs')
+          .end(done);
+      });
+    });
+
     it('should serve Swagger document at explicit path (Issue 183)', function (done) {
       helpers.createServer([swaggerObject], {
         swaggerUiOptions: {
@@ -154,6 +174,25 @@ describe('Swagger UI Middleware v2.0', function () {
           .get('/swagger.json')
           .expect(200)
           .end(helpers.expectContent(swaggerObject, done));
+      });
+    });
+
+    it('should serve swagger-ui from a mount point (Issue 256)', function (done) {
+      helpers.createServer([swaggerObject], {
+        mountPoint: '/foo'
+      }, function (app) {
+        request(app)
+          .get('/foo/docs/') // Trailing slash to avoid a 303
+          .expect(200)
+          .end(function (err, res) {
+            if (err) {
+              return done(err);
+            }
+
+            assert.equal(res.header['swagger-api-docs-url'], '/foo/api-docs');
+
+            done();
+          });
       });
     });
   });

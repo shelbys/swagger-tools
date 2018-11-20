@@ -13,7 +13,7 @@
         "format": { "type": "string" },
         "pattern": { "type": "string" },
         "defaultValue": {
-            "not": { "type": [ "array", "object", "null" ] }
+            "not": { "type": [ "object", "null" ] }
         },
         "enum": {
             "type": "array",

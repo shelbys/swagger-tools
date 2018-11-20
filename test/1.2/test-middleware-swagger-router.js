@@ -28,8 +28,10 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var async = require('async');
 var path = require('path');
 var request = require('supertest');
@@ -142,6 +144,21 @@ describe('Swagger Router Middleware v1.2', function () {
         .get('/api/pet/1')
         .expect(500)
         .end(helpers.expectContent('Cannot resolve the configured swagger-router handler: Pets_getById', done));
+    });
+  });
+
+  it('should return an error when there is no controller and ignoreMissingHandlers is true', function (done) {
+    var cOptions = _.cloneDeep(optionsWithControllersDir);
+
+    cOptions.ignoreMissingHandlers = true;
+
+    helpers.createServer([rlJson, [petJson, storeJson, userJson]], {
+      swaggerRouterOptions: cOptions
+    }, function (app) {
+      request(app)
+        .get('/api/pet/1')
+        .expect(200) // Default test handler will always return 'OK'
+        .end(helpers.expectContent('OK', done));
     });
   });
 
@@ -260,6 +277,24 @@ describe('Swagger Router Middleware v1.2', function () {
           .delete('/api/pet/1')
           .expect(200)
           .end(helpers.expectContent('', done));
+      });
+    });
+
+    it('should explicitly set res.statusCode if missing (Issue 269)', function (done) {
+      helpers.createServer([rlJson, [petJson, storeJson, userJson]], {
+        handler: function (req, res, next) {
+          delete res.statusCode;
+
+          next();
+        },
+        swaggerRouterOptions: {
+          useStubs: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pet/1')
+          .expect(200)
+          .end(helpers.expectContent(samplePet, done));
       });
     });
   });

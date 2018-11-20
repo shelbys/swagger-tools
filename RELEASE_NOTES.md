@@ -1,7 +1,114 @@
 ## Release Notes
 
-### v0.9.1 TBD
+### 0.10.4 (2018-07-20)
 
+* Fix issue where an `object` with a `length` property was incorrectly traversed _(Issue #557)_
+* Remove `string` dependency _(PR #542)_
+
+### 0.10.3 (2017-10-13)
+
+* Remove support for nested controllers _(Issue #537, #540)_
+
+### 0.10.2 (2017-10-10)
+
+* Added support for nested controllers _(PR #422, Issue #283)_
+* Fix issue where async controllers were not identified properly _(Issue #443)_
+* Fix issue where the `failedValidation` property was not set for `Content-Type` request validation errors _(PR #420)_
+* Fix issue where `array` `body` parameters would coerce non-array types into an array _(Issue #438)
+* Fix issue where swagger-ui shows an error icon trying to validate a swagger doc for an internal API *(Issue #323, #370, #526)*
+* Updated dependencies for security vulnerabilities _(Issue #384, #535)_
+
+### 0.10.1 (2016-02-24)
+
+* Fix issue with initializing middleware with an invalid Swagger document *(Issue 355)*
+
+### 0.10.0 (2016-02-22)
+
+* Bring back `84b3e83` which was reverted in `0.9.16`
+
+### 0.9.16 (2016-02-22)
+
+* Fix a bug where file parameters could produce a runtime error if `req.files` was empty, which can happen if you do
+not provide the parameter *(Issue #350)*
+* Revert `v0.9.14` release *(We will be adding it back for `0.10.0`.  Long story short, forces that I do not control
+require that I remove this fix and put it into a minor release instead to avoid upstream projects we do not maintain
+all the sudden reporting errors in response validation that didn't previously report them.  I am sorry for having to
+do this, it was not my idea and I was against it completely.)*
+
+### 0.9.15 (2016-02-15)
+
+* Fixed an issue where `multer.any()` resulted in file parameters not being found properly *(Issue 348)*
+* Updated swagger-ui *(Issue #349)*
+
+### v0.9.14 (2016-02-05)
+
+* Fixed an issue where string an `Array` passed as a `String` wasn't handled properly *(PR 341)*
+
+### v0.9.13 (2016-02-02)
+
+* Upgrade json-refs for upstream bug fixes
+
+### v0.9.12 (2016-02-02)
+
+* Fixed a problem when initializing middleware where some errors could terminate without being logged
+
+### v0.9.11 (2016-01-14)
+
+* Added support for nested query parameters, as supported by [qs](https://github.com/ljharb/qs) *(Issue #294)*
+* Fixed a bug where the generated swagger-ui URL was wrong behind a proxy *(Issue 297, 317)*
+
+### v0.9.10 (2015-12-29)
+
+* Fixed an issue where `consumes` and `produces` values having a `charset` could break request/response validation *(Issue 295)*
+* Fixed an issue where with Swagger 2.0 documents, you cannot use `#validateModel` with an `Array` object *(Issue 303)*
+* Fixed an issue where array values were not validated against their validation constraints, on their format/type *(Issue 300)*
+* Fixed an issue with `collectionFormat=multi` not working right with singlar values *(Issue 313)*
+
+### v0.9.9 (2015-10-27)
+
+* Backport body-parser to run on environments without `Uint8Array`
+
+### v0.9.8 (2015-10-27)
+
+* Make it so you can provide your own text body parser *(Issue 293)*
+* Report all JSON Schema validation errors instead of failing on the first one *(Issue 286)*
+
+### v0.9.7 (2015-10-07)
+
+* Add `ignoreMissingHandler` option to swagger-router middleware to allow the API author to dictate how to handle
+missing handlers *(Issue #274)*
+* Fix bug with handling primitive body parameters
+* Make anyOf/oneOf JSON Schema validation errors more human readable *(Issue #200)*
+* Updated swagger-ui *(Issue #273)*
+* Updated the Swagger 2.0 JSON Schema
+
+### v0.9.6 (2015-09-30)
+
+* Add support for `allowEmptyValue` for parameters *(Issue #282)*
+* Better integer/number validation for parameter values *(PR #279)*
+* Fix missing mock support for `date` and `date-time` *(Issue #277)*
+
+### v0.9.5 (2015-08-20)
+
+* Fixed a problem with 304 requests running middleware twice _(PR 270)_
+
+### v0.9.4 (2015-08-19)
+
+* Fixed a problem with mock support in Hapi.js _(Issue #269)_
+
+### v0.9.3 (2015-08-17)
+
+* Fixed an issue where body parameters did not use their real schema during parameter processing _(Issue #251)_
+
+### v0.9.2 (2015-08-05)
+
+* Reverted a463907 _(Issue #259)_
+
+### v0.9.1 (2015-08-04)
+
+* Added support for URI encoded path parameters _(Issue #230)_
+* Fixed problem for Express where 204/204 remove the `Content-Type` header which makes response validation impossible _(PR #258)_
+* Fixed problem for references to within referenceable objects not marking the referenceable object as referenced _(Issue #176)_
 * Updated the build process to produce smaller browser binaries
 * Updated the Swagger 2.0 JSON Schema file
 

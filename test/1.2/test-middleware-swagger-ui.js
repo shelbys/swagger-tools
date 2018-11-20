@@ -28,8 +28,10 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var async = require('async');
 var helpers = require('../helpers');
@@ -100,6 +102,7 @@ describe('Swagger UI Middleware v1.2', function () {
         .get('/docs/') // Trailing slash to avoid a 303
         .expect(200)
         .expect('content-type', 'text/html; charset=UTF-8')
+        .expect('swagger-api-docs-url', '/api-docs')
         .end(done);
     });
   });
@@ -114,6 +117,7 @@ describe('Swagger UI Middleware v1.2', function () {
         .get('/docs2/') // Trailing slash to avoid a 303
         .expect(200)
         .expect('content-type', 'text/html; charset=UTF-8')
+        .expect('swagger-api-docs-url', '/api-docs')
         .end(done);
     });
   });
@@ -163,7 +167,7 @@ describe('Swagger UI Middleware v1.2', function () {
           request(app)
             .get('/docs/package.json')
             .expect(200)
-            .expect('content-type', 'application/json')
+            .expect('content-type', /application\/json/)
             .end(function (err, res) {
               if (err) {
                 return done(err);
@@ -175,16 +179,25 @@ describe('Swagger UI Middleware v1.2', function () {
             });
         });
       });
+
+      it('should serve swagger-ui from a mount point (Issue 256)', function (done) {
+        helpers.createServer([rlJson, [petJson, storeJson, userJson]], {
+          mountPoint: '/foo'
+        }, function (app) {
+          request(app)
+            .get('/foo/docs/') // Trailing slash to avoid a 303
+            .expect(200)
+            .end(function (err, res) {
+              if (err) {
+                return done(err);
+              }
+
+              assert.equal(res.header['swagger-api-docs-url'], '/foo/api-docs');
+
+              done();
+            });
+        });
+      });
     });
   });
 });
-
-
-
-
-
-
-
-
-
-

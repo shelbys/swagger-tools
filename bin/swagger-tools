@@ -26,7 +26,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var async = require('async');
 var fs = require('fs');
 var helpers = require('../lib/helpers');
@@ -35,18 +35,27 @@ var path = require('path');
 var pkg = require('../package.json');
 var program = require('commander');
 var request = require('superagent');
-var S = require('string');
 var YAML = require('js-yaml');
 
-var exitWithError = function exitWithError (msg) {
+var padRight = function (s, len, ch) {
+  if (!ch) {
+    ch = ' ';
+  }
+  if (s.length >= len) {
+    return s;
+  }
+  return s + Array(len - s.length + 1).join(ch);
+};
+
+var exitWithError = function (msg) {
   console.error();
   console.error('  error: ' + msg);
   console.error(); // Here only to match the output of commander.js
 
   process.exit(1);
 };
-var getDocument = function getDocument (pathOrUrl, callback) {
-  var parseContent = function parseContent (content) {
+var getDocument = function (pathOrUrl, callback) {
+  var parseContent = function (content) {
     var err;
     var response;
 
@@ -83,11 +92,11 @@ var getDocument = function getDocument (pathOrUrl, callback) {
   }
 };
 
-var handleUnidentifiableVersion = function handleUnidentifiableVersion (path) {
+var handleUnidentifiableVersion = function (path) {
   return exitWithError('Unable to identify the Swagger version for document: ' + path);
 };
 
-var getDocuments = function getDocuments (pathsAndOrUrls, autoIncludeRefs, callback) {
+var getDocuments = function (pathsAndOrUrls, callback) {
   var resolvedDocuments = {};
 
   async.map(pathsAndOrUrls, getDocument, function (err, documents) {
@@ -115,26 +124,15 @@ var getDocuments = function getDocuments (pathsAndOrUrls, autoIncludeRefs, callb
       });
     }
 
-    if (autoIncludeRefs && !resolvedDocuments.apiDeclarations && resolvedDocuments.resourceListing) {
-      var apiDeclarationPaths = [pathsAndOrUrls[0]];
-      for (var idx in resolvedDocuments.resourceListing.apis) {
-        var api = resolvedDocuments.resourceListing.apis[idx];
-        if (api.path) {
-          apiDeclarationPaths.push(pathsAndOrUrls[0] + api.path.replace(/\{format\}/, 'json'));
-        }
-      }
-      getDocuments(apiDeclarationPaths, true, callback);
-    } else {
-      callback(err, resolvedDocuments);
-    }
+    callback(err, resolvedDocuments);
   });
 };
 
-var handleUnsupportedVersion = function handleUnsupportedVersion (version) {
+var handleUnsupportedVersion = function (version) {
   exitWithError('Unsupported Swagger version: ' + version);
 };
 
-var handleUnknownCommand = function handleUnknownCommand (command) {
+var handleUnknownCommand = function (command) {
   // Using log instead of error since commander.js uses console.log for help output
   console.log(program._name + ' does not support the ' + command + ' command.');
 
@@ -151,7 +149,7 @@ program
   .option('-n, --no-validation', 'disable pre-conversion validation of the Swagger document(s)')
   .option('-y, --yaml', 'output as YAML instead of JSON')
   .action(function (resourceListing, apiDeclarations) {
-    var doConvert = function doConvert (err, converted) {
+    var doConvert = function (err, converted) {
       var results;
 
       if (err) {
@@ -178,7 +176,7 @@ program
       }
     }.bind(this);
 
-    getDocuments([resourceListing].concat(apiDeclarations || []), false, function (err, documents) {
+    getDocuments([resourceListing].concat(apiDeclarations || []), function (err, documents) {
       if (err) {
         return exitWithError(err.message);
       }
@@ -233,8 +231,8 @@ program
     console.log('Swagger ' + version + ' Information:');
     console.log();
 
-    console.log('  ' + S('documentation url').padRight(paddingAmount).s + spec.docsUrl);
-    console.log('  ' + S('schema(s) url').padRight(paddingAmount).s + spec.schemasUrl);
+    console.log('  ' + padRight('documentation url', paddingAmount) + spec.docsUrl);
+    console.log('  ' + padRight('schema(s) url', paddingAmount) + spec.schemasUrl);
     console.log();
   });
 
@@ -244,12 +242,11 @@ program
 program
   .command('validate <resourceListingOrSwaggerDoc> [apiDeclarations...]')
   .option('-v, --verbose', 'display verbose output')
-  .option('-a, --auto', 'automatically include API Declarations referenced in Resource Listing')
   .description('Display validation results for the Swagger document(s)')
   .action(function (rlOrSO, apiDeclarations) {
     var verbose = this.verbose;
 
-    getDocuments([rlOrSO].concat(apiDeclarations || []), this.auto, function (err, documents) {
+    getDocuments([rlOrSO].concat(apiDeclarations || []), function (err, documents) {
       if (err) {
         return exitWithError(err.message);
       }
@@ -319,15 +316,11 @@ program
         }
 
         if (err) {
-          if (process.env.NODE_ENV === 'test') {
-            throw err;
-          } else {
-            printValidationDetails();
+          printValidationDetails();
 
-            helpers.printValidationResults(version, rlDoc || soDoc, adDocs, results, true);
+          helpers.printValidationResults(version, rlDoc || soDoc, adDocs, results, true);
 
-            process.exit(helpers.getErrorCount(results) > 0 ? 1 : 0);
-          }
+          process.exit(helpers.getErrorCount(results) > 0 ? 1 : 0);
         } else if (verbose) {
           printValidationDetails();
 

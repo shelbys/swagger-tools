@@ -24,14 +24,16 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var cp = require('child_process');
 var path = require('path');
 var swagger = require('../');
 
-var errorHandler = module.exports.errorHandler = function errorHandler() {
+var errorHandler = module.exports.errorHandler = function () {
   return function (err, req, res, next) {
+    var resp = {};
+
     if (err) {
       if (res.statusCode < 400) {
         res.statusCode = 500;
@@ -45,7 +47,21 @@ var errorHandler = module.exports.errorHandler = function errorHandler() {
       //   console.log(JSON.stringify(err.results, null, 2));
       // }
 
-      res.end(err.message);
+      if (req.headers.accept && req.headers.accept.indexOf('application/json') > -1) {
+        res.setHeader('Content-Type', 'application-json');
+
+        _.each(err, function (val, key) {
+          resp[key] = val;
+        });
+
+        resp.message = err.message;
+
+        resp = JSON.stringify(resp);
+      } else {
+        resp = err.message;
+      }
+
+      res.end(resp);
 
       return next();
     } else {
@@ -54,28 +70,46 @@ var errorHandler = module.exports.errorHandler = function errorHandler() {
   };
 };
 
-module.exports.createServer = function createServer (initArgs, options, callback) {
+module.exports.createServer = function (initArgs, options, callback) {
   var app = require('connect')();
   var serverInit = function (middleware) {
     var handler = options.handler || function (req, res) {
       res.end('OK');
     };
 
-    app.use(middleware.swaggerMetadata());
+    function register (middleware) {
+      if (_.isUndefined(options.mountPoint)) {
+        app.use(middleware);
+      } else {
+        app.use(options.mountPoint, middleware);
+      }
+    }
+
+    // For testing only can the callback be called with an Error
+    if (_.isError(middleware)) {
+      throw middleware;
+    }
+
+    if (options.middlewares) {
+      options.middlewares.forEach(function (middleware) {
+        register(middleware);
+      });
+    }
+
+    register(middleware.swaggerMetadata());
 
     // Conditionally enable security (To avoid having to rewrite all Swagger documents or all tests)
     if (Object.keys(options.swaggerSecurityOptions || {}).length > 0) {
-      app.use(middleware.swaggerSecurity(options.swaggerSecurityOptions));
+      register(middleware.swaggerSecurity(options.swaggerSecurityOptions));
     }
 
-    app.use(middleware.swaggerValidator(options.swaggerValidatorOptions));
-    app.use(middleware.swaggerRouter(options.swaggerRouterOptions));
+    register(middleware.swaggerValidator(options.swaggerValidatorOptions));
+    register(middleware.swaggerRouter(options.swaggerRouterOptions));
+    register(middleware.swaggerUi(options.swaggerUiOptions));
 
-    app.use(middleware.swaggerUi(options.swaggerUiOptions));
+    register(handler);
 
-    app.use(handler);
-
-    // Error handler middleware to pass errors downstream as JSON
+    // Error handler middleware to pass errors downstream
     app.use(errorHandler());
 
     callback(app);
@@ -86,11 +120,11 @@ module.exports.createServer = function createServer (initArgs, options, callback
   swagger.initializeMiddleware.apply(undefined, initArgs);
 };
 
-var prepareText = module.exports.prepareText = function prepareText (text) {
+var prepareText = module.exports.prepareText = function (text) {
   return text.replace(/&nbsp;/g, ' ').replace(/\n/g, '');
 };
 
-module.exports.expectContent = function expectContent (content, done) {
+module.exports.expectContent = function (content, done) {
   return function (err, res) {
     if (err) {
       throw err;
@@ -108,11 +142,15 @@ module.exports.expectContent = function expectContent (content, done) {
   };
 };
 
-module.exports.executeCLI = function executeCLI (args, done) {
+module.exports.executeCLI = function (args, done) {
   // Add Node args
   args.unshift('node', path.resolve(path.join(__dirname, '..', 'bin', 'swagger-tools')));
-
-  cp.exec(args.join(' '), function (err, stdout, stderr) {
+  var options = {
+    env: _.assign({}, process.env, {
+      RUNNING_SWAGGER_TOOLS_TESTS: true
+    })
+  };
+  cp.exec(args.join(' '),  options, function (err, stdout, stderr) {
     done(stderr, stdout);
   });
 };

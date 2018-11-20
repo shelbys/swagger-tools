@@ -24,7 +24,7 @@
 
 'use strict';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var cHelpers = require('../lib/helpers');
 var debug = require('debug')('swagger-tools:middleware:router');
 var fs = require('fs');
@@ -35,7 +35,7 @@ var defaultOptions = {
   controllers: {},
   useStubs: false // Should we set this automatically based on process.env.NODE_ENV?
 };
-var getHandlerName = function getHandlerName (req) {
+var getHandlerName = function (req) {
   var handlerName;
 
   switch (req.swagger.swaggerVersion) {
@@ -58,9 +58,10 @@ var getHandlerName = function getHandlerName (req) {
 
   return handlerName;
 };
-var handlerCacheFromDir = function handlerCacheFromDir (dirOrDirs) {
+
+var handlerCacheFromDir = function (dirOrDirs) {
   var handlerCache = {};
-  var jsFileRegex = /\.(coffee|js)$/;
+  var jsFileRegex = /\.(coffee|js|ts)$/;
   var dirs = [];
 
   if (_.isArray(dirOrDirs)) {
@@ -104,7 +105,7 @@ var handlerCacheFromDir = function handlerCacheFromDir (dirOrDirs) {
 
   return handlerCache;
 };
-var getMockValue = function getMockValue (version, schema) {
+var getMockValue = function (version, schema) {
   var type = _.isPlainObject(schema) ? schema.type : schema;
   var value;
 
@@ -203,25 +204,34 @@ var getMockValue = function getMockValue (version, schema) {
     } else if (_.isArray(schema.enum)) {
       value = schema.enum[0];
     } else {
-      value = 'Sample text';
+      if (schema.format === 'date') {
+        value = new Date().toISOString().split('T')[0];
+      } else if (schema.format === 'date-time') {
+        value = new Date().toISOString();
+      } else {
+        value = 'Sample text';
+      }
     }
-
-    // TODO: Handle constraints and formats
 
     break;
   }
 
   return value;
 };
-var mockResponse = function mockResponse (req, res, next, handlerName) {
+var mockResponse = function (req, res, next, handlerName) {
   var method = req.method.toLowerCase();
   var operation = req.swagger.operation;
-  var sendResponse = function sendResponse (err, response) {
+  var sendResponse = function (err, response) {
     if (err) {
       debug('next with error: %j', err);
       return next(err);
     } else {
       debug('send mock response: %s', response);
+
+      // Explicitly set the response status to 200 if not present (Issue #269)
+      if (_.isUndefined(req.statusCode)) {
+        res.statusCode = 200;
+      }
 
       // Mock mode only supports JSON right now
       res.setHeader('Content-Type', 'application/json');
@@ -282,7 +292,7 @@ var mockResponse = function mockResponse (req, res, next, handlerName) {
     return sendResponse(undefined, getMockValue(req.swagger.swaggerVersion, responseType));
   }
 };
-var createStubHandler = function createStubHandler (req, res, next, handlerName) {
+var createStubHandler = function (req, res, next, handlerName) {
   // TODO: Handle headers for 2.0
   // TODO: Handle examples (per mime-type) for 2.0
   // TODO: Handle non-JSON response types
@@ -292,7 +302,7 @@ var createStubHandler = function createStubHandler (req, res, next, handlerName)
   };
 };
 
-var send405 = function send405 (req, res, next) {
+var send405 = function (req, res, next) {
   var allowedMethods = [];
   var err = new Error('Route defined in Swagger specification (' +
                         (_.isUndefined(req.swagger.api) ? req.swagger.apiPath : req.swagger.api.path) +
@@ -340,7 +350,7 @@ var send405 = function send405 (req, res, next) {
  *
  * @returns the middleware function
  */
-exports = module.exports = function swaggerRouterMiddleware (options) {
+exports = module.exports = function (options) {
   var handlerCache = {};
 
   debug('Initializing swagger-router middleware');
@@ -384,8 +394,10 @@ exports = module.exports = function swaggerRouterMiddleware (options) {
 
         req.swagger.useStubs = options.useStubs;
 
-        debug('  Route handler: %s', (_.isUndefined(handler) ? 'false' : handlerName));
-        debug('  Mock mode: %s', options.useStubs);
+        debug('  Route handler: %s', handlerName);
+        debug('    Missing: %s', _.isUndefined(handler) ? 'yes' : 'no');
+        debug('    Ignored: %s', options.ignoreMissingHandlers === true ? 'yes' : 'no');
+        debug('    Using mock: %s', options.useStubs && _.isUndefined(handler) ? 'yes' : 'no');
 
         if (_.isUndefined(handler) && options.useStubs === true) {
           handler = handlerCache[handlerName] = createStubHandler(handlerName);
@@ -399,7 +411,7 @@ exports = module.exports = function swaggerRouterMiddleware (options) {
 
             debug('Handler threw an unexpected error: %s\n%s', err.message, err.stack);
           }
-        } else {
+        } else if (options.ignoreMissingHandlers !== true) {
           rErr = new Error('Cannot resolve the configured swagger-router handler: ' + handlerName);
 
           res.statusCode = 500;

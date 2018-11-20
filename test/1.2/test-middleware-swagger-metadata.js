@@ -28,8 +28,10 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var async = require('async');
 var helpers = require('../helpers');
@@ -131,6 +133,30 @@ describe('Swagger Metadata Middleware v1.2', function () {
         .send({name: 'Top Dog'})
         .expect(201)
         .end(done);
+    });
+  });
+
+  it('should handle primitive body parameters', function (done) {
+    var cPetJson = _.cloneDeep(petJson);
+
+    cPetJson.apis[2].operations[0].consumes.push('application/x-www-form-urlencoded');
+    cPetJson.apis[2].operations[0].parameters[0].type = 'integer';
+
+    helpers.createServer([rlJson, [cPetJson, storeJson, userJson]], {
+      swaggerRouterOptions: {
+        controllers: {
+          addPet: function (req, res) {
+            assert.equal(req.body, 1);
+            res.end('OK');
+          }
+        }
+      }
+    }, function (app) {
+      request(app)
+        .post('/api/pet')
+        .send('1')
+        .expect(200)
+        .end(helpers.expectContent('OK', done));
     });
   });
 
@@ -253,6 +279,78 @@ describe('Swagger Metadata Middleware v1.2', function () {
           .end(done);
       });
     });
+
+    it('should handle multipart/form-data without files but fields only', function (done) {
+      var cPetJson = _.cloneDeep(petJson);
+
+      cPetJson.apis[1].operations[0].nickname = 'Pets_uploadImage';
+
+      helpers.createServer([rlJson, [cPetJson, storeJson, userJson]], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_uploadImage': function (req, res, next) {
+              var file = req.swagger.params.file;
+              var name = req.swagger.params.name;
+
+              assert.ok(_.isPlainObject(file));
+              assert.ok(_.isUndefined(file.value));
+
+              assert.equal(name.value, 'Heisenberg');
+
+              res.statusCode = 201;
+              res.end();
+
+              next();
+            }
+          }
+        }
+      }, function(app) {
+        request(app)
+          .post('/api/pet/uploadImage')
+          .field('name', 'Heisenberg')
+          .expect(201)
+          .end(done);
+      });
+    });
+
+    it('should handle multiple files', function (done) {
+      var cPetJson = _.cloneDeep(petJson);
+
+      cPetJson.apis[1].operations[0].nickname = 'Pets_uploadImage';
+
+      helpers.createServer([rlJson, [cPetJson, storeJson, userJson]], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_uploadImage': function (req, res, next) {
+              var file = req.swagger.params.file;
+              var otherFile = req.swagger.params.otherFile;
+
+              assert.ok(_.isPlainObject(file));
+              assert.equal(file.value.originalname, 'package.json');
+              assert.equal(file.value.mimetype, 'application/json');
+              assert.deepEqual(JSON.parse(file.value.buffer), pkg);
+
+              assert.ok(_.isPlainObject(otherFile));
+              assert.equal(otherFile.value.originalname, 'package.json');
+              assert.equal(otherFile.value.mimetype, 'application/json');
+              assert.deepEqual(JSON.parse(otherFile.value.buffer), pkg);
+
+              res.statusCode = 201;
+              res.end();
+
+              next();
+            }
+          }
+        }
+      }, function(app) {
+        request(app)
+          .post('/api/pet/uploadImage')
+          .attach('file', path.resolve(path.join(__dirname, '..', '..', 'package.json')), 'package.json')
+          .attach('otherFile', path.resolve(path.join(__dirname, '..', '..', 'package.json')), 'package.json')
+          .expect(201)
+          .end(done);
+      });
+    });
   });
 
   describe('issues', function () {
@@ -367,6 +465,32 @@ describe('Swagger Metadata Middleware v1.2', function () {
         });
 
         done();
+      });
+    });
+
+    it('should handle URI encoded path parameters (Issue 230)', function (done) {
+      var cPetJson = _.cloneDeep(petJson);
+
+      // Change the type to string so we can send an encoded value
+      cPetJson.apis[0].operations[0].parameters[0].type = 'string';
+
+      delete cPetJson.apis[0].operations[0].parameters[0].format;
+
+      helpers.createServer([rlJson, [cPetJson, storeJson, userJson]], {
+        swaggerRouterOptions: {
+          controllers: {
+            getPetById: function (req, res, next) {
+              assert.equal(req.swagger.params.petId.value, 'abc:HZ');
+
+              next();
+            }
+          }
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pet/abc%3AHZ')
+          .expect(200)
+          .end(helpers.expectContent('OK', done));
       });
     });
   });

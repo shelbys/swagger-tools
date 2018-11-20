@@ -26,26 +26,21 @@
 
 /* This module contains code that is reused in more than one of the Swagger middlewares */
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var helpers = require('../lib/helpers');
+var validators = require('../lib/validators');
 var parseurl = require('parseurl');
 var qs = require('qs');
 
-var isModelType = module.exports.isModelType = function isModelType (spec, type) {
+var isModelType = module.exports.isModelType = function (spec, type) {
   return spec.primitives.indexOf(type) === -1;
 };
 
-var getParameterType = module.exports.getParameterType = function getParameterType (schema) {
-  var type;
-
-  if (schema.schema) {
-    type = getParameterType(schema.schema);
-  } else {
-    type = schema.type;
-  }
+var getParameterType = module.exports.getParameterType = function (schema) {
+  var type = schema.type;
 
   if (!type && schema.schema) {
-    type = schema.type;
+    type = getParameterType(schema.schema);
   }
 
   if (!type) {
@@ -55,7 +50,7 @@ var getParameterType = module.exports.getParameterType = function getParameterTy
   return type;
 };
 
-var isModelParameter = module.exports.isModelParameter = function isModelParameter (version, param) {
+var isModelParameter = module.exports.isModelParameter = function (version, param) {
   var spec = helpers.getSpec(version);
   var type = getParameterType(param);
   var isModel = false;
@@ -71,7 +66,7 @@ var isModelParameter = module.exports.isModelParameter = function isModelParamet
   return isModel;
 };
 
-module.exports.getParameterValue = function getParameterValue (version, parameter, pathKeys, match, req, debug) {
+module.exports.getParameterValue = function (version, parameter, pathKeys, match, req, debug) {
   var defaultVal = version === '1.2' ? parameter.defaultValue : parameter.default;
   var paramLocation = version === '1.2' ? parameter.paramType : parameter.in;
   var paramType = getParameterType(parameter);
@@ -86,7 +81,18 @@ module.exports.getParameterValue = function getParameterValue (version, paramete
   case 'form':
   case 'formData':
     if (paramType.toLowerCase() === 'file') {
-      val = req.files[parameter.name];
+      if (_.isArray(req.files)) {
+        val = _.find(req.files, function (file) {
+          return file.fieldname === parameter.name;
+        });
+      } else if (!_.isUndefined(req.files)) {
+        val = req.files[parameter.name] ? req.files[parameter.name] : undefined;
+      }
+
+      // Swagger does not allow an array of files
+      if (_.isArray(val)) {
+        val = val[0];
+      }
     } else if (isModelParameter(version, parameter)) {
       val = req.body;
     } else {
@@ -101,13 +107,13 @@ module.exports.getParameterValue = function getParameterValue (version, paramete
   case 'path':
     _.each(pathKeys, function (key, index) {
       if (key.name === parameter.name) {
-        val = match[index + 1];
+        val = decodeURIComponent(match[index + 1]);
       }
     });
 
     break;
   case 'query':
-    val = req.query[parameter.name];
+    val = _.get(req.query, parameter.name);
 
     break;
   }
@@ -122,11 +128,11 @@ module.exports.getParameterValue = function getParameterValue (version, paramete
   return val;
 };
 
-module.exports.parseQueryString = function parseQueryString(req) {
+module.exports.parseQueryString = function(req) {
   return req.url.indexOf('?') > -1 ? qs.parse(parseurl(req).query, {}) : {};
 };
 
-module.exports.debugError = function debugError (err, debug) {
+module.exports.debugError = function (err, debug) {
   var reason = err.message.replace(/^.*validation failed: /, '');
 
   reason = reason.charAt(0).toUpperCase() + reason.substring(1);
@@ -156,4 +162,148 @@ module.exports.debugError = function debugError (err, debug) {
       }
     });
   }
+};
+
+var convertValue = module.exports.convertValue = function (value, schema, type, location) {
+  var original = value;
+
+  // Default to {}
+  if (_.isUndefined(schema)) {
+    schema = {};
+  }
+
+  // Try to find the type or default to 'object'
+  if (_.isUndefined(type)) {
+    type = getParameterType(schema);
+  }
+
+  // If there is no value, do not convert it
+  if (_.isUndefined(value)) {
+    return value;
+  }
+
+  // If there is an empty value and allowEmptyValue is true, return it
+  if (schema.allowEmptyValue && value === '') {
+    return value;
+  }
+
+  switch (type) {
+  case 'array':
+    if (_.isString(value)) {
+      switch (schema.collectionFormat) {
+      case 'csv':
+      case undefined:
+        try {
+          value = JSON.parse(value);
+        } catch (err) {
+          value = original;
+        }
+
+        if (_.isString(value)) {
+          value = value.split(',');
+        }
+        break;
+      case 'multi':
+        value = [value];
+        break;
+      case 'pipes':
+        value = value.split('|');
+        break;
+      case 'ssv':
+        value = value.split(' ');
+        break;
+      case 'tsv':
+        value = value.split('\t');
+        break;
+      }
+    }
+
+    // Handle situation where the expected type is array but only one value was provided
+    if (!_.isArray(value)) {
+      // Do not convert non-Array items to single item arrays if the location is 'body' (Issue #438)
+      if (location !== 'body') {
+        value = [value];
+      }
+    }
+
+    if (_.isArray(value)) {
+      value = _.map(value, function (item, index) {
+        var iSchema = _.isArray(schema.items) ? schema.items[index] : schema.items;
+
+        return convertValue(item, iSchema, iSchema ? iSchema.type : undefined, location);
+      });
+    }
+
+    break;
+
+  case 'boolean':
+    if (!_.isBoolean(value)) {
+      if (['false', 'true'].indexOf(value) === -1) {
+        value = original;
+      } else {
+        value = value === 'true' || value === true ? true : false;
+      }
+    }
+
+    break;
+
+  case 'integer':
+    if (!_.isNumber(value)) {
+      if (_.isString(value) && _.trim(value).length === 0) {
+        value = NaN;
+      }
+
+      value = Number(value);
+
+      if (isNaN(value)) {
+        value = original;
+      }
+    }
+
+    break;
+
+  case 'number':
+    if (!_.isNumber(value)) {
+      if (_.isString(value) && _.trim(value).length === 0) {
+        value = NaN;
+      }
+
+      value = Number(value);
+
+      if (isNaN(value)) {
+        value = original;
+      }
+    }
+
+    break;
+
+  case 'object':
+    if (_.isString(value)) {
+      try {
+        value = JSON.parse(value);
+      } catch (err) {
+        value = original;
+      }
+    }
+
+    break;
+
+  case 'string':
+    if(!_.isDate(value)) {
+      var isDate = schema.format === 'date' && validators.isValidDate(value);
+      var isDateTime = schema.format === 'date-time' && validators.isValidDateTime(value);
+      if (isDate || isDateTime) {
+        value = new Date(value);
+    
+        if (!_.isDate(value) || value.toString() === 'Invalid Date') {
+          value = original;
+        }
+      }
+    }
+
+    break;
+
+  }
+
+  return value;
 };

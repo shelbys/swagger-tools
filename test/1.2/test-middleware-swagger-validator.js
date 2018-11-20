@@ -28,12 +28,15 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
 var assert = require('assert');
 var async = require('async');
 var helpers = require('../helpers');
 var request = require('supertest');
+var stream = require('stream');
 
 var petJson = _.cloneDeep(require('../../samples/1.2/pet.json'));
 var rlJson = _.cloneDeep(require('../../samples/1.2/resource-listing.json'));
@@ -42,6 +45,11 @@ var userJson = _.cloneDeep(require('../../samples/1.2/user.json'));
 
 var samplePet = {
   id: 1,
+  name: 'Test Pet'
+};
+
+var sampleInvalidPet = {
+  identifier: 1,
   name: 'Test Pet'
 };
 
@@ -353,24 +361,25 @@ describe('Swagger Validator Middleware v1.2', function () {
       async.map(testScenarios, function (scenario, callback) {
         var clonedP = _.cloneDeep(petJson);
         var expectedMessage = errors[index];
+        var value = values[index];
 
         clonedP.apis[0].operations[0].parameters.push(scenario);
 
         helpers.createServer([rlJson, [clonedP, storeJson, userJson]], {}, function (app) {
           request(app)
-          .get('/api/pet/1')
-          .query({arg0: values[index]})
-          .expect(400)
-          .end(function (err, res) {
-            if (res) {
-              res.expectedMessage = 'Request validation failed: ' + expectedMessage;
-            }
+            .get('/api/pet/1')
+            .query({arg0: value})
+            .expect(400)
+            .end(function (err, res) {
+              if (res) {
+                res.expectedMessage = 'Request validation failed: ' + expectedMessage;
+              }
 
             callback(err, res);
-          });
-
-          index++;
+            });
         });
+
+        index++;
       }, function (err, responses) {
         if (err) {
           throw err;
@@ -1105,6 +1114,60 @@ describe('Swagger Validator Middleware v1.2', function () {
           ], done));
       });
     });
+    
+    it('should validate a valid piped response', function (done) {
+      var cPetJson = _.cloneDeep(petJson);
+
+      cPetJson.apis[0].operations[0].nickname = 'Pets_getPetById';
+
+      helpers.createServer([rlJson, [cPetJson, storeJson, userJson]], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_getPetById': function (req, res) {
+              var s = new stream.Readable();
+              s.push(new Buffer(JSON.stringify(samplePet)));
+              s.push(null);
+              s.pipe(res);
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pet/1')
+          .expect(200)
+          .end(helpers.expectContent(samplePet, done));
+      });
+    });
+    
+    it('should validate an invalid piped response', function (done) {
+      var cPetJson = _.cloneDeep(petJson);
+
+      cPetJson.apis[0].operations[0].nickname = 'Pets_getPetById';
+
+      helpers.createServer([rlJson, [cPetJson, storeJson, userJson]], {
+        swaggerRouterOptions: {
+          controllers: {
+            'Pets_getPetById': function (req, res) {
+              var s = new stream.Readable();
+              s.push(new Buffer(JSON.stringify(sampleInvalidPet)));
+              s.push(null);
+              s.pipe(res);
+            }
+          }
+        },
+        swaggerValidatorOptions: {
+          validateResponse: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pet/1')
+          .expect(500)
+          .end(helpers.expectContent('Response validation failed: failed schema validation', done));
+      });
+    });
   });
 
   describe('issues', function () {
@@ -1137,6 +1200,19 @@ describe('Swagger Validator Middleware v1.2', function () {
           .expect(500)
           .end(helpers.expectContent('Response validation failed: invalid content type (application/x-yaml).  These ' +
                                        'are valid: application/json, application/xml, text/plain, text/html', done));
+      });
+    });
+
+    it('should set failedValidation for Content-Type validation errors (PR 420)', function (done) {
+      helpers.createServer([rlJson, [petJson, storeJson, userJson]], {}, function (app) {
+        request(app)
+          .post('/api/pet/1')
+          .set('Accept', 'application/json')
+          .expect(400)
+          .end(helpers.expectContent({
+            failedValidation: true,
+            message: 'Invalid content type (application/octet-stream).  These are valid: application/x-www-form-urlencoded'
+          }, done));
       });
     });
   });

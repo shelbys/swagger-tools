@@ -28,8 +28,11 @@
 
 // Here to quiet down Connect logging errors
 process.env.NODE_ENV = 'test';
+// Indicate to swagger-tools that we're in testing mode
+process.env.RUNNING_SWAGGER_TOOLS_TESTS = 'true';
 
-var _ = require('lodash-compat');
+var _ = require('lodash');
+var assert = require('assert');
 var async = require('async');
 var path = require('path');
 var request = require('supertest');
@@ -174,6 +177,26 @@ describe('Swagger Router Middleware v2.0', function () {
     });
   });
 
+  it('should return an error when there is no controller and ignoreMissingHandlers is true', function (done) {
+    var cPetStoreJson = _.cloneDeep(petStoreJson);
+    var cOptions = _.cloneDeep(optionsWithControllersDir);
+
+    cOptions.ignoreMissingHandlers = true;
+
+    delete cPetStoreJson.paths['/pets']['x-swagger-router-controller'];
+    delete cPetStoreJson.paths['/pets/{id}'].get['x-swagger-router-controller'];
+    delete cPetStoreJson.paths['/pets/{id}'].delete['x-swagger-router-controller'];
+
+    helpers.createServer([cPetStoreJson], {
+      swaggerRouterOptions: cOptions
+    }, function (app) {
+      request(app)
+        .get('/api/pets/1')
+        .expect(200) // Default test handler will always return 'OK'
+        .end(helpers.expectContent('OK', done));
+    });
+  });
+
   it('should do routing when there is no controller and use of stubs is on', function (done) {
     var cPetStoreJson = _.cloneDeep(petStoreJson);
     var cOptions = _.cloneDeep(optionsWithControllersDir);
@@ -306,6 +329,75 @@ describe('Swagger Router Middleware v2.0', function () {
           .delete('/api/pets/1')
           .expect(204)
           .end(helpers.expectContent('', done));
+      });
+    });
+
+    it('should explicitly set res.statusCode if missing (Issue 269)', function (done) {
+      helpers.createServer([petStoreJson], {
+        handler: function (req, res, next) {
+          delete res.statusCode;
+
+          next();
+        },
+        swaggerRouterOptions: {
+          useStubs: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .expect(200)
+          .end(helpers.expectContent(samplePet, done));
+      });
+    });
+
+    it('should return mock value for date string (Issue #277)', function (done) {
+      var cPetStoreJson = _.cloneDeep(petStoreJson);
+
+      cPetStoreJson.paths['/pets/{id}'].get.responses['200'].schema = {
+        type: 'string',
+        format: 'date'
+      };
+
+      helpers.createServer([cPetStoreJson], {
+        swaggerRouterOptions: {
+          useStubs: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .expect(200)
+          .end(function (err, res) {
+            var dateStr = JSON.parse(res.text);
+
+            assert.ok(dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/));
+
+            done();
+          });
+      });
+    });
+
+    it('should return mock value for date-time string (Issue #277)', function (done) {
+      var cPetStoreJson = _.cloneDeep(petStoreJson);
+
+      cPetStoreJson.paths['/pets/{id}'].get.responses['200'].schema = {
+        type: 'string',
+        format: 'date-time'
+      };
+
+      helpers.createServer([cPetStoreJson], {
+        swaggerRouterOptions: {
+          useStubs: true
+        }
+      }, function (app) {
+        request(app)
+          .get('/api/pets/1')
+          .expect(200)
+          .end(function (err, res) {
+            var dateStr = JSON.parse(res.text);
+            assert.ok(dateStr.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{3})Z$/));
+
+            done();
+          });
       });
     });
   });
