@@ -61,6 +61,10 @@ var getDocument = function (pathOrUrl, callback) {
 
     try {
       response = YAML.safeLoad(content);
+
+      if (response.swaggerVersion === '1.2' && !response.resourcePath) {
+        response.resourcePath = pathOrUrl.replace('spec/', '/../');
+      }
     } catch (e) {
       err = e;
     }
